@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SkyShield GCS — Operation History Log</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+  <!-- Custom Theme -->
+  <link href="css/style.css" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Navbar -->
+  <!-- Mirrors navigation from control panel for continuity -->
+  <nav class="navbar navbar-dark navbar-expand-lg fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" href="control.html">
+        <i class="bi bi-bullseye me-2 text-hud"></i> SkyShield GCS
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain" aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div id="navMain" class="collapse navbar-collapse">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="control.html">Control</a></li>
+          <li class="nav-item"><a class="nav-link active" href="logs.html">Logs</a></li>
+          <li class="nav-item"><a class="nav-link" href="manual.html">Manual</a></li>
+          <li class="nav-item"><a class="nav-link" href="form.html">Form</a></li>
+        </ul>
+        <div class="d-flex align-items-center gap-3">
+          <a class="btn btn-outline-success btn-sm" href="login.html"><i class="bi bi-box-arrow-right me-1"></i> Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Log explorer allows operators to review mission history -->
+  <main class="container pt-4 mt-5">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h4 m-0 text-hud"><i class="bi bi-journal-text me-2"></i>Operation History Log</h2>
+      <a href="control.html" class="btn btn-outline-success btn-sm"><i class="bi bi-speedometer2 me-1"></i>Back to Control</a>
+    </div>
+
+    <!-- Search bar filters the log table client-side -->
+    <div class="input-group mb-3">
+      <span class="input-group-text bg-dark border-0 text-muted"><i class="bi bi-search"></i></span>
+      <input id="logSearch" type="text" class="form-control form-control-hud" placeholder="Filter logs (e.g., SCAN, FIRE, SUCCESS, ERROR)…" />
+    </div>
+
+    <!-- Mission event table -->
+    <div class="table-responsive">
+      <table id="logTable" class="table table-dark table-striped table-hover align-middle table-hud">
+        <thead>
+          <tr class="small text-muted">
+            <th scope="col">Date</th>
+            <th scope="col">Time</th>
+            <th scope="col">Action</th>
+            <th scope="col">Result</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2025-06-08</td><td>09:12:34</td><td>LOGIN</td><td class="text-success">SUCCESS</td><td>OperatorName authenticated</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:13:02</td><td>SCAN</td><td class="text-success">ACTIVE</td><td>Sector A sweep initiated</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:14:19</td><td>MOVE</td><td class="text-success">OK</td><td>Turret azimuth +5°</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:15:41</td><td>FIRE</td><td class="text-success">SUCCESS</td><td>Target T-021 neutralized</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:16:03</td><td>SCAN</td><td class="text-muted">IDLE</td><td>Scan paused</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:17:55</td><td>FIRE</td><td class="text-danger">ABORT</td><td>Safety interlock engaged</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:18:12</td><td>MOVE</td><td class="text-success">OK</td><td>Elevation -2°</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:19:21</td><td>SCAN</td><td class="text-success">ACTIVE</td><td>Sector B sweep initiated</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:21:09</td><td>FIRE</td><td class="text-success">SUCCESS</td><td>Target T-037 neutralized</td>
+          </tr>
+          <tr>
+            <td>2025-06-08</td><td>09:22:40</td><td>STOP</td><td class="text-muted">STANDBY</td><td>Operations halted by operator</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer class="text-center text-muted small py-3">
+    <a class="link-hud" href="manual.html"><i class="bi bi-book me-1"></i>Operator Manual</a>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Simple text match filter: hides rows that do not include the query
+    const searchInput = document.getElementById('logSearch');
+    const rows = Array.from(document.querySelectorAll('#logTable tbody tr'));
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      rows.forEach(tr => {
+        const txt = tr.textContent.toLowerCase();
+        tr.style.display = txt.includes(q) ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+/* === Core color palette and shared tokens === */
+:root{
+  --bg: #0b0f12;
+  --bg-elev: #12181d;
+  --bg-darker: #090d10;
+  --hud-green: #2eea7b;
+  --hud-green-2: #1fd16a;
+  --hud-amber: #d6a11b;
+  --hud-red: #ff4d4d;
+  --text: #cfe6d2;
+  --muted: #7f9187;
+  --grid: rgba(46,234,123,0.08);
+  --outline: #1f3a2b;
+}
+
+/* === Base layout + typography === */
+html, body {
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(46,234,123,.05), transparent 60%),
+    radial-gradient(700px 400px at -10% 30%, rgba(46,234,123,.04), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-darker) 60%, #06090b);
+  color: var(--text);
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* === Interactive text accents === */
+.link-hud {
+  color: var(--hud-green);
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(46,234,123,.35);
+}
+.link-hud:hover { color: #8bffbf; border-bottom-color: transparent; }
+
+/* === Navigation styling === */
+.navbar {
+  background: linear-gradient(180deg, #0b0f12, #0a0d11);
+  border-bottom: 1px solid #143825;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+}
+.navbar-brand { color: var(--text); }
+.navbar .nav-link { color: #9fb0a5; }
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--hud-green); }
+
+/* === Card containers === */
+.card-hud.card, .card-hud {
+  background: var(--bg-elev);
+  border: 1px solid #183424;
+  border-radius: .5rem;
+}
+.card-hud .card-header {
+  background: linear-gradient(180deg, #0e1419, #12181d);
+  border-bottom: 1px solid #183424;
+  color: #b7d5c1;
+}
+
+/* === Form controls === */
+.form-control-hud.form-control, .form-select {
+  color: var(--text);
+  background: #0e1419;
+  border: 1px solid #183424;
+}
+.form-control-hud:focus, .form-select:focus {
+  color: var(--text);
+  background: #0e1419;
+  border-color: var(--hud-green);
+  box-shadow: 0 0 0 .2rem rgba(46,234,123,.15);
+}
+
+/* === Button overrides === */
+.btn-success {
+  --bs-btn-bg: var(--hud-green-2);
+  --bs-btn-border-color: var(--hud-green-2);
+  --bs-btn-hover-bg: #25ef7a;
+  --bs-btn-hover-border-color: #25ef7a;
+  --bs-btn-color: #07150e;
+}
+.btn-outline-success {
+  --bs-btn-color: var(--hud-green);
+  --bs-btn-border-color: var(--hud-green);
+  --bs-btn-hover-bg: var(--hud-green);
+  --bs-btn-hover-border-color: var(--hud-green);
+  --bs-btn-hover-color: #07150e;
+}
+.btn-danger {
+  --bs-btn-bg: #a31b2b;
+  --bs-btn-border-color: #a31b2b;
+  --bs-btn-hover-bg: #c32337;
+  --bs-btn-hover-border-color: #c32337;
+}
+.hud-button { transition: transform .05s ease, box-shadow .2s ease; }
+.hud-button:hover { box-shadow: 0 0 12px rgba(46,234,123,.25); }
+.hud-button.active { transform: translateY(1px) scale(.99); }
+.hud-glow:hover { box-shadow: 0 0 16px rgba(46,234,123,.35); }
+
+/* === Utility text helpers === */
+.text-hud { color: var(--hud-green); }
+.tracking-wide { letter-spacing: .08em; }
+
+/* === Login page background texture === */
+.login-page {
+  background:
+    repeating-linear-gradient(-45deg, #0c1216, #0c1216 10px, #0e151a 10px, #0e151a 20px),
+    linear-gradient(180deg, #0a0f12, #070b0d);
+}
+
+/* === Camera viewport styling === */
+.camera-shell {
+  background: #000;
+  border: 1px solid var(--outline);
+  border-radius: .35rem;
+  overflow: hidden;
+}
+.camera-feed {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background:
+    linear-gradient(transparent 95%, rgba(46,234,123,.12) 96%),
+    repeating-linear-gradient(90deg, transparent 0, transparent 23px, var(--grid) 24px),
+    repeating-linear-gradient(0deg, transparent 0, transparent 23px, var(--grid) 24px),
+    #000;
+  background-size: 100% 100%, 24px 24px, 24px 24px, auto;
+}
+.camera-feed::after {
+  content: '';
+  position: absolute; inset: 0;
+  border: 1px solid rgba(46,234,123,.18);
+  box-shadow: inset 0 0 45px rgba(46,234,123,.08);
+  pointer-events: none;
+}
+.camera-feed.scanlines {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(46,234,123,.05) 0, rgba(46,234,123,.05) 2px, transparent 2px, transparent 4px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 23px, var(--grid) 24px),
+    repeating-linear-gradient(0deg, transparent 0, transparent 23px, var(--grid) 24px),
+    #000;
+}
+.camera-feed.flash::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--flash-color, rgba(255,0,0,.45));
+  animation: camflash .35s ease;
+  pointer-events: none;
+}
+@keyframes camflash {
+  0% { opacity: .0; } 15% { opacity: 1; } 100% { opacity: 0; }
+}
+
+/* === Status indicators === */
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block; vertical-align: middle;
+  box-shadow: 0 0 8px rgba(0,0,0,.6), 0 0 6px rgba(46,234,123,.25) inset;
+  border: 1px solid #0a0a0a;
+}
+.status-ok { background: #2eea7b; }
+.status-warn { background: #e0a800; }
+.status-danger { background: #ff4d4d; }
+
+/* === Progress bars === */
+.progress-hud {
+  background: #0d1519;
+  border: 1px solid #183424;
+  height: .75rem;
+}
+
+/* === Console viewport === */
+.console {
+  min-height: 140px;
+  max-height: 220px;
+  overflow: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* === Table look and feel === */
+.table-hud.table {
+  border-color: #183424;
+}
+.table-hud thead th {
+  border-bottom: 1px solid #183424 !important;
+}
+.table-hud tbody tr:hover {
+  background-color: #121a16 !important;
+}
+
+/* === Footer divider === */
+footer { border-top: 1px solid #143825; }
+
+/* === Misc utility overrides === */
+hr { border-color: #183424; }
