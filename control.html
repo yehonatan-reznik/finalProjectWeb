@@ -40,9 +40,6 @@
           <li class="nav-item"><a class="nav-link" href="manual.html">Manual</a></li>
           <li class="nav-item"><a class="nav-link" href="form.html">Form</a></li>
         </ul>
-        <div class="d-flex align-items-center gap-3">
-          <a class="btn btn-outline-success btn-sm" href="login.html"><i class="bi bi-box-arrow-right me-1"></i> Logout</a>
-        </div>
       </div>
     </div>
   </nav>
@@ -60,14 +57,24 @@
             <span class="fw-semibold"><i class="bi bi-camera-video me-2"></i> Camera View</span>
             <div class="d-flex align-items-center gap-3 flex-wrap">
               <span id="cameraStatus" class="camera-status-text">Stream idle</span>
-              <div class="input-group input-group-sm" style="max-width: 240px;">
-                <input
-                  id="cameraUrlInput"
-                  type="text"
-                  class="form-control"
-                  placeholder="http://192.168.4.1"
-                  aria-label="Camera base URL" />
-                <button id="cameraConnectBtn" class="btn btn-outline-success">Connect</button>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="input-group input-group-sm" style="max-width: 240px;">
+                  <input
+                    id="cameraUrlInput"
+                    type="text"
+                    class="form-control"
+                    placeholder="http://10.119.108.61"
+                    aria-label="Camera base URL" />
+                  <button id="cameraConnectBtn" class="btn btn-outline-success">Connect</button>
+                </div>
+                <button
+                  id="cameraIpManagerBtn"
+                  type="button"
+                  class="btn btn-outline-light btn-sm"
+                  data-bs-toggle="modal"
+                  data-bs-target="#cameraIpModal">
+                  <i class="bi bi-sliders me-1"></i>Edit IP
+                </button>
               </div>
             </div>
           </div>
@@ -83,7 +90,7 @@
                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center text-muted px-4 text-center">
                 <i class="bi bi-camera-video-off display-6 mb-3 text-secondary"></i>
                 <p class="mb-2">Enter the ESP32-CAM address to connect the live stream.</p>
-                <p class="small text-muted mb-0">Example: <span class="text-hud">http://10.131.199.61</span> (the <code>/stream</code> path is added automatically)</p>
+                <p class="small text-muted mb-0">Example: <span class="text-hud">http://10.119.108.61</span> (the <code>/stream</code> path is added automatically)</p>
               </div>
             </div>
           </div>
@@ -191,6 +198,36 @@
     </div>
   </main>
 
+  <!-- Camera IP Modal -->
+  <div class="modal fade" id="cameraIpModal" tabindex="-1" aria-labelledby="cameraIpModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content card-hud">
+        <div class="modal-header">
+          <h5 class="modal-title" id="cameraIpModalLabel"><i class="bi bi-sliders me-2"></i>Camera Address</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="cameraIpModalAlert" class="alert alert-danger d-none" role="alert"></div>
+          <label for="modalCameraBase" class="form-label">Base URL or IP</label>
+          <input
+            id="modalCameraBase"
+            type="text"
+            class="form-control form-control-hud"
+            placeholder="http://10.119.108.61" />
+          <div class="form-text">The live stream expects the <code>/stream</code> path (added automatically).</div>
+        </div>
+        <div class="modal-footer d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-secondary" id="cameraIpResetBtn">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Default
+          </button>
+          <button type="button" class="btn btn-success" id="cameraIpSaveBtn">
+            <i class="bi bi-check2 me-1"></i>Save &amp; Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="text-center text-muted small py-3">
     <a class="link-hud me-3" href="logs.html"><i class="bi bi-journal-text me-1"></i>View Logs</a>
     <a class="link-hud" href="manual.html"><i class="bi bi-book me-1"></i>Operator Manual</a>
@@ -205,8 +242,13 @@
     const urlInput = document.getElementById('cameraUrlInput');
     const connectBtn = document.getElementById('cameraConnectBtn');
     const statusLabel = document.getElementById('cameraStatus');
+    const cameraIpModal = document.getElementById('cameraIpModal');
+    const modalInput = document.getElementById('modalCameraBase');
+    const modalAlert = document.getElementById('cameraIpModalAlert');
+    const modalSaveBtn = document.getElementById('cameraIpSaveBtn');
+    const modalResetBtn = document.getElementById('cameraIpResetBtn');
     const STORAGE_KEY = 'skyshield_camera_base_url';
-    const DEFAULT_BASE_URL = 'http://10.131.199.61';
+    const DEFAULT_BASE_URL = 'http://10.119.108.61';
 
     function normalizeBaseUrl(raw) {
       let url = raw.trim();
@@ -225,7 +267,7 @@
         placeholder.classList.remove('d-none');
         statusLabel.textContent = 'Stream idle';
         localStorage.removeItem(STORAGE_KEY);
-        return;
+        return '';
       }
 
       const streamUrl = normalized + '/stream';
@@ -234,15 +276,24 @@
       placeholder.classList.add('d-none');
       statusLabel.textContent = 'Streaming from ' + normalized;
       localStorage.setItem(STORAGE_KEY, normalized);
+      return normalized;
+    }
+
+    function updateBaseFromInput(rawValue) {
+      const normalized = setStream(rawValue);
+      if (normalized) {
+        urlInput.value = normalized;
+      }
+      return normalized;
     }
 
     connectBtn.addEventListener('click', () => {
-      setStream(urlInput.value);
+      updateBaseFromInput(urlInput.value);
     });
 
     urlInput.addEventListener('keyup', (event) => {
       if (event.key === 'Enter') {
-        setStream(urlInput.value);
+        updateBaseFromInput(urlInput.value);
       }
     });
 
@@ -252,13 +303,53 @@
       placeholder.classList.remove('d-none');
     });
 
+    if (cameraIpModal && modalInput && modalSaveBtn && modalResetBtn) {
+      function showModalAlert(message, variant = 'danger') {
+        if (!modalAlert) return;
+        modalAlert.textContent = message;
+        modalAlert.className = `alert alert-${variant}`;
+        modalAlert.classList.remove('d-none');
+      }
+
+      function hideModalAlert() {
+        if (!modalAlert) return;
+        modalAlert.classList.add('d-none');
+        modalAlert.textContent = '';
+      }
+
+      cameraIpModal.addEventListener('show.bs.modal', () => {
+        modalInput.value = urlInput.value.trim() || DEFAULT_BASE_URL;
+        hideModalAlert();
+      });
+
+      modalSaveBtn.addEventListener('click', () => {
+        const normalized = updateBaseFromInput(modalInput.value);
+        if (!normalized) {
+          showModalAlert('Enter a valid IP or URL such as http://10.119.108.61');
+          return;
+        }
+        hideModalAlert();
+        if (window.bootstrap && bootstrap.Modal) {
+          const modalInstance = bootstrap.Modal.getInstance(cameraIpModal);
+          if (modalInstance) {
+            modalInstance.hide();
+          }
+        }
+      });
+
+      modalResetBtn.addEventListener('click', () => {
+        modalInput.value = DEFAULT_BASE_URL;
+        hideModalAlert();
+      });
+    }
+
     const savedUrl = localStorage.getItem(STORAGE_KEY);
     if (savedUrl) {
-      urlInput.value = savedUrl;
-      setStream(savedUrl);
+      const normalized = setStream(savedUrl);
+      urlInput.value = normalized || savedUrl;
     } else if (DEFAULT_BASE_URL) {
-      urlInput.value = DEFAULT_BASE_URL;
-      setStream(DEFAULT_BASE_URL);
+      const normalizedDefault = setStream(DEFAULT_BASE_URL);
+      urlInput.value = normalizedDefault || DEFAULT_BASE_URL;
     }
   </script>
 </body>
