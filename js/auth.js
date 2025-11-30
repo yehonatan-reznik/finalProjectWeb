@@ -1,94 +1,111 @@
-(function (window, document) {
+/* global firebase */
+(function (window) {
   'use strict';
 
-  const LOGIN_PAGE = 'index.html';
-  const SESSION_KEY = 'skyshield_auth_user';
-  const DEFAULT_USERS = [
-    { username: 'commander', password: 'shield123' },
-    { username: 'observer', password: 'falcon987' },
-    { username: 'a', password: 'a' }
-  ];
+  const firebaseConfig = {
+    apiKey: 'AIzaSyBuRH94SdL8iA830JeKT2Xyp2LKXsw1EXk',
+    authDomain: 'skyshield-45d5e.firebaseapp.com',
+    projectId: 'skyshield-45d5e',
+    storageBucket: 'skyshield-45d5e.firebasestorage.app',
+    messagingSenderId: '112895141645',
+    appId: '1:112895141645:web:bb6d411d096b8645cdf244'
+  };
 
-  const USERS = Array.isArray(window.SkyShieldUsers) && window.SkyShieldUsers.length
-    ? window.SkyShieldUsers
-    : DEFAULT_USERS;
-
-  function normalizeUsername(value) {
-    return (value || '').trim().toLowerCase();
+  if (typeof firebase === 'undefined') {
+    console.error('Firebase SDK not detected. Load it before js/auth.js');
+    return;
   }
 
-  function findUser(username) {
-    const normalized = normalizeUsername(username);
-    return USERS.find((user) => normalizeUsername(user.username) === normalized);
+  const app = firebase.apps && firebase.apps.length
+    ? firebase.app()
+    : firebase.initializeApp(firebaseConfig);
+
+  const auth = firebase.auth(app);
+
+  async function loginWithEmail(rawEmail, rawPassword) {
+    const email = (rawEmail || '').trim();
+    const password = rawPassword || '';
+
+    if (!email || !password) {
+      return { ok: false, message: 'Enter both email and password.' };
+    }
+
+    try {
+      const result = await auth.signInWithEmailAndPassword(email, password);
+      return { ok: true, user: result.user };
+    } catch (error) {
+      return { ok: false, message: friendlyEmailError(error), code: error && error.code };
+    }
   }
 
-  function login(username, password) {
-    const trimmedUser = (username || '').trim();
-    const suppliedPassword = password || '';
-
-    if (!trimmedUser || !suppliedPassword) {
-      return { ok: false, message: 'Enter both username and password.' };
+  function friendlyEmailError(error) {
+    if (!error || !error.code) {
+      return 'Authentication failed. Try again.';
     }
 
-    const record = findUser(trimmedUser);
-    if (!record || record.password !== suppliedPassword) {
-      return { ok: false, message: 'Invalid username or password.' };
+    switch (error.code) {
+      case 'auth/invalid-email':
+        return 'Email format is invalid.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled.';
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+        return 'Incorrect email or password.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait and try again.';
+      default:
+        return error.message || 'Authentication failed. Try again.';
     }
-
-    sessionStorage.setItem(SESSION_KEY, record.username);
-    return { ok: true, user: record.username };
   }
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    return auth.signOut();
   }
 
   function isAuthenticated() {
-    return Boolean(sessionStorage.getItem(SESSION_KEY));
+    return Boolean(auth.currentUser);
   }
 
-  function currentUser() {
-    return sessionStorage.getItem(SESSION_KEY);
+  function onAuthChanged(callback) {
+    return auth.onAuthStateChanged(callback);
   }
 
   function buildRedirectParam() {
-    const path = window.location.pathname.split('/').pop() || 'control.html';
-    const query = window.location.search || '';
-    const hash = window.location.hash || '';
-    return encodeURIComponent(path + query + hash);
+    const { pathname, search, hash } = window.location;
+    const fragment = `${pathname.split('/').pop() || ''}${search || ''}${hash || ''}`;
+    return encodeURIComponent(fragment || 'control.html');
   }
 
   function requireAuth(options = {}) {
-    if (isAuthenticated()) {
-      return true;
-    }
+    const loginPage = options.loginPage || 'index.html';
+    const skipRedirect = Boolean(options.skipRedirect);
+    const disableRedirectParam = Boolean(options.disableRedirectParam);
+    const onReady = typeof options.onReady === 'function' ? options.onReady : null;
 
-    const loginTarget = options.loginPage || LOGIN_PAGE;
-    const redirect = options.skipRedirect ? '' : `?redirect=${buildRedirectParam()}`;
-    window.location.href = `${loginTarget}${redirect}`;
-    return false;
-  }
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        if (typeof options.onAuthenticated === 'function') {
+          options.onAuthenticated(user);
+        }
+      } else if (!skipRedirect) {
+        const redirect = disableRedirectParam ? '' : `?redirect=${buildRedirectParam()}`;
+        window.location.href = `${loginPage}${redirect}`;
+      }
 
-  function hydrateLogouts() {
-    const targets = document.querySelectorAll('[data-action="logout"]');
-    targets.forEach((node) => {
-      node.addEventListener('click', (event) => {
-        event.preventDefault();
-        logout();
-        window.location.href = LOGIN_PAGE;
-      });
+      if (onReady) {
+        onReady(user);
+      }
     });
-  }
 
-  document.addEventListener('DOMContentLoaded', hydrateLogouts);
+    return unsubscribe;
+  }
 
   window.SkyShieldAuth = {
-    login,
+    loginWithEmail,
     logout,
-    requireAuth,
     isAuthenticated,
-    currentUser,
-    SESSION_KEY,
-    USERS
+    onAuthChanged,
+    requireAuth,
+    auth
   };
-})(window, document);
+})(window);

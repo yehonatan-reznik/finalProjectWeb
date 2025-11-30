@@ -22,21 +22,22 @@
         <div class="text-uppercase small text-muted tracking-wide">Authorized Personnel Only</div>
       </div>
 
-      <!-- Credential form submits to control panel -->
+      <!-- Credential form -->
       <div class="card card-hud shadow-lg">
         <div class="card-body p-4">
           <div id="loginError" class="alert alert-danger d-none" role="alert"></div>
           <form id="loginForm" action="#" method="post" autocomplete="off" novalidate>
             <div class="mb-3">
-              <label class="form-label" for="usernameInput">Username</label>
+              <label class="form-label" for="emailInput">Authorized Email</label>
               <input
-                id="usernameInput"
-                type="text"
+                id="emailInput"
+                type="email"
                 class="form-control form-control-hud"
-                placeholder="Enter username"
-                name="username"
-                autocomplete="username"
+                placeholder="commander@skyshield.local"
+                name="email"
+                autocomplete="email"
                 required />
+              <div class="form-text text-muted">Use the briefing email assigned to your station.</div>
             </div>
             <div class="mb-4">
               <label class="form-label" for="passwordInput">Password</label>
@@ -49,8 +50,8 @@
                 autocomplete="current-password"
                 required />
             </div>
-            <button type="submit" class="btn btn-success w-100 hud-glow">
-              <i class="bi bi-shield-lock me-2"></i>Login
+            <button id="loginSubmitBtn" type="submit" class="btn btn-success w-100 hud-glow">
+              <i class="bi bi-shield-lock me-2"></i>Authenticate
             </button>
           </form>
         </div>
@@ -68,34 +69,51 @@
 
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
   <script src="js/auth.js"></script>
   <script>
     (function () {
+      'use strict';
+
+      if (!window.SkyShieldAuth) {
+        console.error('SkyShieldAuth module failed to load.');
+        return;
+      }
+
       const form = document.getElementById('loginForm');
-      const usernameInput = document.getElementById('usernameInput');
+      const emailInput = document.getElementById('emailInput');
       const passwordInput = document.getElementById('passwordInput');
+      const submitBtn = document.getElementById('loginSubmitBtn');
       const errorBox = document.getElementById('loginError');
       const params = new URLSearchParams(window.location.search);
       const redirectTarget = sanitizeRedirect(params.get('redirect'));
 
-      if (window.SkyShieldAuth.isAuthenticated()) {
-        window.location.href = redirectTarget;
-        return;
-      }
+      let unsubAuthListener = null;
 
-      function showError(message) {
-        errorBox.textContent = message;
-        errorBox.classList.remove('d-none');
-      }
+      unsubAuthListener = window.SkyShieldAuth.onAuthChanged((user) => {
+        if (user) {
+          window.location.href = redirectTarget;
+        }
+      });
 
-      function clearError() {
-        errorBox.textContent = '';
-        errorBox.classList.add('d-none');
-      }
+      window.addEventListener('beforeunload', () => {
+        if (typeof unsubAuthListener === 'function') {
+          unsubAuthListener();
+        }
+      });
 
-      form.addEventListener('submit', (event) => {
+      form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const result = window.SkyShieldAuth.login(usernameInput.value, passwordInput.value);
+        clearMessages();
+
+        await handleLogin();
+      });
+
+      async function handleLogin() {
+        setLoading(true, 'Authenticating…');
+        const result = await window.SkyShieldAuth.loginWithEmail(emailInput.value, passwordInput.value);
+        setLoading(false);
 
         if (!result.ok) {
           showError(result.message);
@@ -104,10 +122,29 @@
           return;
         }
 
-        clearError();
         form.reset();
         window.location.href = redirectTarget;
-      });
+      }
+
+      function setLoading(isLoading, label) {
+        submitBtn.disabled = isLoading;
+        submitBtn.classList.toggle('disabled', isLoading);
+        if (isLoading && label) {
+          submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${label}`;
+        } else if (!isLoading) {
+          submitBtn.innerHTML = '<i class="bi bi-shield-lock me-2"></i>Authenticate';
+        }
+      }
+
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.remove('d-none');
+      }
+
+      function clearMessages() {
+        errorBox.classList.add('d-none');
+        errorBox.textContent = '';
+      }
 
       function sanitizeRedirect(target) {
         if (!target || /^https?:\/\//i.test(target)) {

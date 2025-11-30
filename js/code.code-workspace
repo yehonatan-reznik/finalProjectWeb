@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "camera",
+			"path": "../../../../../Documents/PlatformIO/Projects/camera"
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "code"
+	}
+}
