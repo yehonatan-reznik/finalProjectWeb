@@ -40,6 +40,11 @@
           <li class="nav-item"><a class="nav-link" href="manual.html">Manual</a></li>
           <li class="nav-item"><a class="nav-link" href="form.html">Form</a></li>
         </ul>
+        <div class="d-flex align-items-center mt-3 mt-lg-0">
+          <button id="logoutBtn" class="btn btn-outline-warning btn-sm ms-lg-3">
+            <i class="bi bi-box-arrow-right me-1"></i>Logout
+          </button>
+        </div>
       </div>
     </div>
   </nav>
@@ -261,6 +266,7 @@
     const btnLeft = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
     const btnStopCursor = document.getElementById('btnStopCursor');
+    const logoutBtn = document.getElementById('logoutBtn');
 
     const AIM_VALUES = {
       STOP: 0,
@@ -396,6 +402,21 @@
       if (btnStopCursor) btnStopCursor.addEventListener('click', () => sendAim(AIM_VALUES.STOP));
     }
 
+    function wireLogout() {
+      if (!logoutBtn) return;
+      logoutBtn.addEventListener('click', async () => {
+        try {
+          if (window.SkyShieldAuth && window.SkyShieldAuth.logout) {
+            await window.SkyShieldAuth.logout();
+          }
+        } catch (err) {
+          console.error('Logout failed', err);
+        } finally {
+          window.location.href = 'index.html';
+        }
+      });
+    }
+
     const savedUrl = localStorage.getItem(STORAGE_KEY);
     if (savedUrl) {
       const normalized = setStream(savedUrl);
@@ -407,6 +428,7 @@
 
     initAimChannel();
     wireAimControls();
+    wireLogout();
 
     if (window.SkyShieldAuth) {
       window.SkyShieldAuth.requireAuth();
