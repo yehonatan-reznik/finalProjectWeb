@@ -2,27 +2,31 @@
 
 /* === Core color palette and shared tokens === */
 :root{
-  --bg: #0b0f12;
-  --bg-elev: #12181d;
-  --bg-darker: #090d10;
+  --bg: #111a26;
+  --bg-elev: #192432;
+  --bg-darker: #0c1620;
   --hud-green: #2eea7b;
   --hud-green-2: #1fd16a;
   --hud-amber: #d6a11b;
   --hud-red: #ff4d4d;
-  --text: #cfe6d2;
-  --muted: #7f9187;
+  --text: #e9f3ed;
+  --muted: #c3cfc8;
   --grid: rgba(46,234,123,0.08);
-  --outline: #1f3a2b;
+  --outline: #2a4b36;
 }
 
 /* === Base layout + typography === */
 html, body {
   background:
-    radial-gradient(900px 500px at 85% -10%, rgba(46,234,123,.05), transparent 60%),
-    radial-gradient(700px 400px at -10% 30%, rgba(46,234,123,.04), transparent 60%),
-    linear-gradient(180deg, var(--bg), var(--bg-darker) 60%, #06090b);
+    radial-gradient(900px 500px at 85% -10%, rgba(46,234,123,.08), transparent 60%),
+    radial-gradient(700px 400px at -10% 30%, rgba(46,234,123,.08), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-darker) 60%, #0a121a);
   color: var(--text);
   font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.text-muted {
+  color: var(--muted) !important;
 }
 
 /* === Interactive text accents === */
@@ -35,8 +39,8 @@ html, body {
 
 /* === Navigation styling === */
 .navbar {
-  background: linear-gradient(180deg, #0b0f12, #0a0d11);
-  border-bottom: 1px solid #143825;
+  background: linear-gradient(180deg, #16202d, #121b26);
+  border-bottom: 1px solid #1f3a2b;
   box-shadow: 0 6px 18px rgba(0,0,0,.35);
 }
 .navbar-brand { color: var(--text); }
@@ -45,27 +49,30 @@ html, body {
 
 /* === Card containers === */
 .card-hud.card, .card-hud {
-  background: var(--bg-elev);
-  border: 1px solid #183424;
+  background: #1b2736;
+  border: 1px solid #294133;
   border-radius: .5rem;
 }
 .card-hud .card-header {
-  background: linear-gradient(180deg, #0e1419, #12181d);
-  border-bottom: 1px solid #183424;
-  color: #b7d5c1;
+  background: linear-gradient(180deg, #1d2a39, #172332);
+  border-bottom: 1px solid #294133;
+  color: #e1f2e8;
 }
 
 /* === Form controls === */
 .form-control-hud.form-control, .form-select {
   color: var(--text);
-  background: #0e1419;
-  border: 1px solid #183424;
+  background: #16202c;
+  border: 1px solid #294133;
 }
 .form-control-hud:focus, .form-select:focus {
   color: var(--text);
-  background: #0e1419;
+  background: #16202c;
   border-color: var(--hud-green);
   box-shadow: 0 0 0 .2rem rgba(46,234,123,.15);
+}
+.form-text {
+  color: var(--muted);
 }
 
 /* === Button overrides === */
@@ -101,8 +108,8 @@ html, body {
 /* === Login page background texture === */
 .login-page {
   background:
-    repeating-linear-gradient(-45deg, #0c1216, #0c1216 10px, #0e151a 10px, #0e151a 20px),
-    linear-gradient(180deg, #0a0f12, #070b0d);
+    repeating-linear-gradient(-45deg, #141e2a, #141e2a 10px, #162332 10px, #162332 20px),
+    linear-gradient(180deg, #111a26, #0d1622);
 }
 
 /* === Camera viewport styling === */
@@ -214,8 +221,8 @@ html, body {
 
 /* === Progress bars === */
 .progress-hud {
-  background: #0d1519;
-  border: 1px solid #183424;
+  background: #14202b;
+  border: 1px solid #294133;
   height: 1rem;
   box-shadow: inset 0 0 12px rgba(46,234,123,.15);
 }
