@@ -105,6 +105,21 @@
         <!-- Manual control inputs for remote operators -->
         <div class="card card-hud mt-3">
           <div class="card-body">
+            <div class="row g-3 align-items-center mb-3">
+              <div class="col-12 col-md-8 col-lg-6">
+                <label for="esp32IpInput" class="form-label mb-1 text-uppercase small text-muted">ESP32 Control Address</label>
+                <div class="input-group input-group-sm">
+                  <input
+                    id="esp32IpInput"
+                    type="text"
+                    class="form-control"
+                    placeholder="http://10.12.22.6"
+                    aria-label="ESP32 IP or URL" />
+                  <button id="esp32ConnectBtn" class="btn btn-outline-info">Connect</button>
+                </div>
+                <div class="form-text text-muted">Saved locally and synced to Firebase (espIP).</div>
+              </div>
+            </div>
             <div class="row g-3 align-items-center justify-content-center">
               <!-- Directional pad -->
               <div class="col-12 col-md-6">
@@ -130,6 +145,9 @@
                 <div class="d-grid gap-2">
                   <button id="fireBtn" class="btn btn-danger hud-button">
                     <i class="bi bi-lightning-charge-fill me-2"></i>Fire Laser
+                  </button>
+                  <button id="stopLaserBtn" class="btn btn-outline-danger hud-button">
+                    <i class="bi bi-slash-circle me-2"></i>Stop Laser
                   </button>
                   <button id="scanBtn" class="btn btn-success hud-button">
                     <i class="bi bi-radar me-2"></i>Scan Mode
@@ -259,13 +277,26 @@
     const modalAlert = document.getElementById('cameraIpModalAlert');
     const modalSaveBtn = document.getElementById('cameraIpSaveBtn');
     const modalResetBtn = document.getElementById('cameraIpResetBtn');
+    const esp32IpInput = document.getElementById('esp32IpInput');
+    const esp32ConnectBtn = document.getElementById('esp32ConnectBtn');
     const STORAGE_KEY = 'skyshield_camera_base_url';
+    const ESP32_STORAGE_KEY = 'esp32_ip';
     const DEFAULT_BASE_URL = 'http://10.119.108.61';
+    const FIREBASE_PATHS = {
+      aim: 'aim',
+      cameraIP: 'cameraIP',
+      espIP: 'espIP',
+      laserOn: 'laserOn'
+    };
     const btnUp = document.getElementById('btnUp');
     const btnDown = document.getElementById('btnDown');
     const btnLeft = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
     const btnStopCursor = document.getElementById('btnStopCursor');
+    const fireBtn = document.getElementById('fireBtn');
+    const stopLaserBtn = document.getElementById('stopLaserBtn');
+    const scanBtn = document.getElementById('scanBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
     const AIM_VALUES = {
@@ -275,16 +306,25 @@
       RIGHT: 3,
       LEFT: 4
     };
+    let dbInstance = null;
     let aimRef = null;
 
-    function initAimChannel() {
+    function getDb() {
       if (!window.firebase || !firebase.database) {
-        console.error('Firebase database SDK not available for aim channel.');
-        return;
+        console.error('Firebase database SDK not available.');
+        return null;
       }
+      if (!dbInstance) {
+        dbInstance = firebase.database();
+      }
+      return dbInstance;
+    }
+
+    function initAimChannel() {
+      const database = getDb();
+      if (!database) return;
       try {
-        const db = firebase.database();
-        aimRef = db.ref('aim');
+        aimRef = database.ref(FIREBASE_PATHS.aim);
         // Initialize to stop.
         aimRef.set(AIM_VALUES.STOP).catch((err) => console.error('Failed to set initial aim', err));
       } catch (err) {
@@ -300,6 +340,21 @@
       aimRef.set(value).catch((err) => console.error('Failed to send aim command', err));
     }
 
+    function sendCmd(cmd) {
+      const ip = localStorage.getItem(ESP32_STORAGE_KEY);
+      if (!ip) return alert('No ESP32 IP set!');
+      fetch(`${ip}/${cmd}`).catch((err) => console.error('Command failed:', err));
+    }
+
+    function setLaserState(isOn) {
+      const database = getDb();
+      if (!database) return;
+      database
+        .ref(FIREBASE_PATHS.laserOn)
+        .set(isOn ? 1 : 0)
+        .catch((err) => console.error('Failed to update laser state', err));
+    }
+
     function normalizeBaseUrl(raw) {
       let url = raw.trim();
       if (!url) return '';
@@ -309,7 +364,38 @@
       return url.replace(/\/+$/, '');
     }
 
-    function setStream(baseUrl) {
+    function persistCameraIpToFirebase(value) {
+      const database = getDb();
+      if (!database) return;
+      database
+        .ref(FIREBASE_PATHS.cameraIP)
+        .set(value)
+        .catch((err) => console.error('Failed to sync camera IP', err));
+    }
+
+    function persistEsp32IpToFirebase(value) {
+      const database = getDb();
+      if (!database) return;
+      database
+        .ref(FIREBASE_PATHS.espIP)
+        .set(value)
+        .catch((err) => console.error('Failed to sync ESP32 IP', err));
+    }
+
+    function applyEsp32Ip(rawValue, { syncToFirebase = false } = {}) {
+      const normalized = normalizeBaseUrl(rawValue);
+      if (!normalized) return '';
+      if (esp32IpInput) {
+        esp32IpInput.value = normalized;
+      }
+      localStorage.setItem(ESP32_STORAGE_KEY, normalized);
+      if (syncToFirebase) {
+        persistEsp32IpToFirebase(normalized);
+      }
+      return normalized;
+    }
+
+    function setStream(baseUrl, { syncToFirebase = false } = {}) {
       const normalized = normalizeBaseUrl(baseUrl);
       if (!normalized) {
         feedImg.src = '';
@@ -326,11 +412,14 @@
       placeholder.classList.add('d-none');
       statusLabel.textContent = 'Streaming from ' + normalized;
       localStorage.setItem(STORAGE_KEY, normalized);
+      if (syncToFirebase) {
+        persistCameraIpToFirebase(normalized);
+      }
       return normalized;
     }
 
-    function updateBaseFromInput(rawValue) {
-      const normalized = setStream(rawValue);
+    function updateBaseFromInput(rawValue, syncToFirebase = false) {
+      const normalized = setStream(rawValue, { syncToFirebase });
       if (normalized) {
         urlInput.value = normalized;
       }
@@ -338,14 +427,30 @@
     }
 
     connectBtn.addEventListener('click', () => {
-      updateBaseFromInput(urlInput.value);
+      updateBaseFromInput(urlInput.value, true);
     });
 
     urlInput.addEventListener('keyup', (event) => {
       if (event.key === 'Enter') {
-        updateBaseFromInput(urlInput.value);
+        updateBaseFromInput(urlInput.value, true);
       }
     });
+
+    if (esp32ConnectBtn && esp32IpInput) {
+      const saveEsp32FromInput = () => {
+        const normalized = applyEsp32Ip(esp32IpInput.value, { syncToFirebase: true });
+        if (!normalized) {
+          alert('Enter the ESP32 IP (e.g., http://10.12.22.6)');
+        }
+      };
+
+      esp32ConnectBtn.addEventListener('click', saveEsp32FromInput);
+      esp32IpInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+          saveEsp32FromInput();
+        }
+      });
+    }
 
     feedImg.addEventListener('error', () => {
       statusLabel.textContent = 'Stream error – check the address';
@@ -373,7 +478,7 @@
       });
 
       modalSaveBtn.addEventListener('click', () => {
-        const normalized = updateBaseFromInput(modalInput.value);
+        const normalized = updateBaseFromInput(modalInput.value, true);
         if (!normalized) {
           showModalAlert('Enter a valid IP or URL such as http://10.119.108.61');
           return;
@@ -393,13 +498,125 @@
       });
     }
 
+    function initCameraBase() {
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) {
+        updateBaseFromInput(local);
+      }
+
+      const database = getDb();
+      if (database) {
+        database
+          .ref(FIREBASE_PATHS.cameraIP)
+          .once('value')
+          .then((snapshot) => {
+            const value = snapshot.val();
+            if (value) {
+              updateBaseFromInput(value);
+            } else if (!local && DEFAULT_BASE_URL) {
+              updateBaseFromInput(DEFAULT_BASE_URL);
+            }
+          })
+          .catch((err) => console.error('Failed to load camera IP from Firebase', err));
+
+        database.ref(FIREBASE_PATHS.cameraIP).on('value', (snapshot) => {
+          const value = snapshot.val();
+          if (value) {
+            updateBaseFromInput(value);
+          }
+        });
+      } else if (!local && DEFAULT_BASE_URL) {
+        updateBaseFromInput(DEFAULT_BASE_URL);
+      }
+    }
+
+    function initEsp32Ip() {
+      const local = localStorage.getItem(ESP32_STORAGE_KEY);
+      if (local && esp32IpInput) {
+        esp32IpInput.value = local;
+      }
+
+      const database = getDb();
+      if (database) {
+        database
+          .ref(FIREBASE_PATHS.espIP)
+          .once('value')
+          .then((snapshot) => {
+            const value = snapshot.val();
+            if (value) {
+              applyEsp32Ip(value);
+            }
+          })
+          .catch((err) => console.error('Failed to load ESP32 IP from Firebase', err));
+
+        database.ref(FIREBASE_PATHS.espIP).on('value', (snapshot) => {
+          const value = snapshot.val();
+          if (value) {
+            applyEsp32Ip(value);
+          }
+        });
+      }
+    }
+
+    function ensureLaserFlag() {
+      const database = getDb();
+      if (!database) return;
+      database
+        .ref(FIREBASE_PATHS.laserOn)
+        .once('value')
+        .then((snapshot) => {
+          if (snapshot.val() === null) {
+            return database.ref(FIREBASE_PATHS.laserOn).set(0);
+          }
+          return null;
+        })
+        .catch((err) => console.error('Failed to initialize laser flag', err));
+    }
+
     // Wire directional controls to Firebase Realtime Database.
     function wireAimControls() {
-      if (btnUp) btnUp.addEventListener('click', () => sendAim(AIM_VALUES.UP));
-      if (btnDown) btnDown.addEventListener('click', () => sendAim(AIM_VALUES.DOWN));
-      if (btnLeft) btnLeft.addEventListener('click', () => sendAim(AIM_VALUES.LEFT));
-      if (btnRight) btnRight.addEventListener('click', () => sendAim(AIM_VALUES.RIGHT));
-      if (btnStopCursor) btnStopCursor.addEventListener('click', () => sendAim(AIM_VALUES.STOP));
+      if (btnUp) btnUp.addEventListener('click', () => {
+        sendCmd('servo_up');
+        sendAim(AIM_VALUES.UP);
+      });
+      if (btnDown) btnDown.addEventListener('click', () => {
+        sendCmd('servo_down');
+        sendAim(AIM_VALUES.DOWN);
+      });
+      if (btnLeft) btnLeft.addEventListener('click', () => {
+        sendCmd('step_left');
+        sendAim(AIM_VALUES.LEFT);
+      });
+      if (btnRight) btnRight.addEventListener('click', () => {
+        sendCmd('step_right');
+        sendAim(AIM_VALUES.RIGHT);
+      });
+      if (btnStopCursor) btnStopCursor.addEventListener('click', () => {
+        sendCmd('stop');
+        sendAim(AIM_VALUES.STOP);
+      });
+    }
+
+    function wireActionButtons() {
+      if (fireBtn) {
+        fireBtn.addEventListener('click', () => {
+          sendCmd('laser_on');
+          setLaserState(true);
+        });
+      }
+      if (stopLaserBtn) {
+        stopLaserBtn.addEventListener('click', () => {
+          sendCmd('laser_off');
+          setLaserState(false);
+        });
+      }
+      if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+          sendCmd('stop');
+          setLaserState(false);
+          sendAim(AIM_VALUES.STOP);
+        });
+      }
     }
 
     function wireLogout() {
@@ -417,17 +634,12 @@
       });
     }
 
-    const savedUrl = localStorage.getItem(STORAGE_KEY);
-    if (savedUrl) {
-      const normalized = setStream(savedUrl);
-      urlInput.value = normalized || savedUrl;
-    } else if (DEFAULT_BASE_URL) {
-      const normalizedDefault = setStream(DEFAULT_BASE_URL);
-      urlInput.value = normalizedDefault || DEFAULT_BASE_URL;
-    }
-
+    initCameraBase();
+    initEsp32Ip();
+    ensureLaserFlag();
     initAimChannel();
     wireAimControls();
+    wireActionButtons();
     wireLogout();
 
     if (window.SkyShieldAuth) {
