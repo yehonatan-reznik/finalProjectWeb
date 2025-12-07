@@ -100,13 +100,16 @@
             </div>
           </div>
         </div>
+      </div>
 
+      <!-- Right column (status) -->
+      <div class="col-lg-4">
         <!-- Controls -->
         <!-- Manual control inputs for remote operators -->
-        <div class="card card-hud mt-3">
+        <div class="card card-hud">
           <div class="card-body">
             <div class="row g-3 align-items-center mb-3">
-              <div class="col-12 col-md-8 col-lg-6">
+              <div class="col-12">
                 <label for="esp32IpInput" class="form-label mb-1 text-uppercase small text-muted">ESP32 Control Address</label>
                 <div class="input-group input-group-sm">
                   <input
@@ -120,9 +123,9 @@
                 <div class="form-text text-muted">Saved locally and synced to Firebase (espIP).</div>
               </div>
             </div>
-            <div class="row g-3 align-items-center justify-content-center">
+            <div class="row g-3 align-items-center">
               <!-- Directional pad -->
-              <div class="col-12 col-md-6">
+              <div class="col-12">
                 <div class="d-grid gap-2 direction-pad">
                   <div class="d-flex justify-content-center">
                     <button id="btnUp" class="btn btn-outline-success hud-button px-4"><i class="bi bi-arrow-up"></i></button>
@@ -141,7 +144,7 @@
               </div>
 
               <!-- Actions -->
-              <div class="col-12 col-md-6">
+              <div class="col-12">
                 <div class="d-grid gap-2">
                   <button id="fireBtn" class="btn btn-danger hud-button">
                     <i class="bi bi-lightning-charge-fill me-2"></i>Fire Laser
@@ -161,12 +164,8 @@
           </div>
         </div>
 
-      </div>
-
-      <!-- Right column (status) -->
-      <div class="col-lg-4">
         <!-- Status panel summarizes current system health -->
-        <div class="card card-hud status-panel">
+        <div class="card card-hud status-panel mt-3">
           <div class="card-header fw-semibold">
             <i class="bi bi-activity me-2"></i>System Status
           </div>
