@@ -297,6 +297,8 @@
     const scanBtn = document.getElementById('scanBtn');
     const stopBtn = document.getElementById('stopBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+    let streamCandidates = [];
+    let streamCandidateIndex = 0;
 
     const AIM_VALUES = {
       STOP: 0,
@@ -381,6 +383,28 @@
         .catch((err) => console.error('Failed to sync ESP32 IP', err));
     }
 
+    function buildStreamCandidates(normalized) {
+      try {
+        const u = new URL(normalized);
+        const hasCustomPath = u.pathname && u.pathname !== '/';
+        const candidates = [];
+        if (hasCustomPath) {
+          candidates.push(normalized);
+        } else {
+          const base = normalized;
+          candidates.push(base + '/stream'); // common default
+          if (!u.port) {
+            candidates.push(base + ':81/stream'); // typical AI Thinker port
+          }
+          candidates.push(base); // root fallback
+        }
+        return [...new Set(candidates)];
+      } catch (err) {
+        console.error('Invalid URL for stream candidates', err);
+        return [];
+      }
+    }
+
     function applyEsp32Ip(rawValue, { syncToFirebase = false } = {}) {
       const normalized = normalizeBaseUrl(rawValue);
       if (!normalized) return '';
@@ -405,11 +429,14 @@
         return '';
       }
 
-      const streamUrl = normalized + '/stream';
+      streamCandidates = buildStreamCandidates(normalized);
+      streamCandidateIndex = 0;
+      const streamUrl = streamCandidates[streamCandidateIndex] || '';
+
       feedImg.src = streamUrl;
       feedImg.classList.remove('d-none');
       placeholder.classList.add('d-none');
-      statusLabel.textContent = 'Streaming from ' + normalized;
+      statusLabel.textContent = 'Streaming from ' + streamUrl;
       localStorage.setItem(STORAGE_KEY, normalized);
       if (syncToFirebase) {
         persistCameraIpToFirebase(normalized);
@@ -452,7 +479,14 @@
     }
 
     feedImg.addEventListener('error', () => {
-      statusLabel.textContent = 'Stream error – check the address';
+      if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
+        streamCandidateIndex += 1;
+        const nextUrl = streamCandidates[streamCandidateIndex];
+        statusLabel.textContent = 'Retrying stream via ' + nextUrl;
+        feedImg.src = nextUrl;
+        return;
+      }
+      statusLabel.textContent = 'Stream error – check the address/port/path';
       feedImg.classList.add('d-none');
       placeholder.classList.remove('d-none');
     });
@@ -501,6 +535,7 @@
       const local = localStorage.getItem(STORAGE_KEY);
       if (local) {
         updateBaseFromInput(local);
+        return; // Prefer local override; do not auto-override from Firebase.
       }
 
       const database = getDb();
@@ -512,19 +547,12 @@
             const value = snapshot.val();
             if (value) {
               updateBaseFromInput(value);
-            } else if (!local && DEFAULT_BASE_URL) {
+            } else if (DEFAULT_BASE_URL) {
               updateBaseFromInput(DEFAULT_BASE_URL);
             }
           })
           .catch((err) => console.error('Failed to load camera IP from Firebase', err));
-
-        database.ref(FIREBASE_PATHS.cameraIP).on('value', (snapshot) => {
-          const value = snapshot.val();
-          if (value) {
-            updateBaseFromInput(value);
-          }
-        });
-      } else if (!local && DEFAULT_BASE_URL) {
+      } else if (DEFAULT_BASE_URL) {
         updateBaseFromInput(DEFAULT_BASE_URL);
       }
     }
