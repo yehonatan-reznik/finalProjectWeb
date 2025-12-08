@@ -1,8 +1,8 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SkyShield GCS — Control Panel</title>
+  <title>SkyShield GCS Γאפ Control Panel</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Bootstrap 5 CSS -->
@@ -63,23 +63,17 @@
             <div class="d-flex align-items-center gap-3 flex-wrap">
               <span id="cameraStatus" class="camera-status-text">Stream idle</span>
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="input-group input-group-sm" style="max-width: 240px;">
+                <div class="input-group input-group-sm" style="max-width: 280px;">
+                  <span class="input-group-text bg-secondary text-light">Camera IP</span>
                   <input
                     id="cameraUrlInput"
                     type="text"
                     class="form-control"
-                    placeholder="http://10.119.108.61"
-                    aria-label="Camera base URL" />
-                  <button id="cameraConnectBtn" class="btn btn-outline-success">Connect</button>
+                    placeholder="Loading from Firebase..."
+                    aria-label="Camera base URL"
+                    readonly />
                 </div>
-                <button
-                  id="cameraIpManagerBtn"
-                  type="button"
-                  class="btn btn-outline-light btn-sm"
-                  data-bs-toggle="modal"
-                  data-bs-target="#cameraIpModal">
-                  <i class="bi bi-sliders me-1"></i>Edit IP
-                </button>
+                <span class="badge bg-info text-dark">Auto from Firebase</span>
               </div>
             </div>
           </div>
@@ -94,8 +88,8 @@
                 id="cameraPlaceholder"
                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center text-muted px-4 text-center">
                 <i class="bi bi-camera-video-off display-6 mb-3 text-secondary"></i>
-                <p class="mb-2">Enter the ESP32-CAM address to connect the live stream.</p>
-                <p class="small text-muted mb-0">Example: <span class="text-hud">http://10.119.108.61</span> (the <code>/stream</code> path is added automatically)</p>
+                <p class="mb-2">Waiting for ESP32-CAM address from Firebase…</p>
+                <p class="small text-muted mb-0">Update <code>cameraIP</code> in Realtime Database to change the stream source.</p>
               </div>
             </div>
           </div>
@@ -197,7 +191,7 @@
               <div class="col-6 status-grid-value text-end"><span id="modeVal" class="status-emphasis">Manual</span></div>
 
               <div class="col-6 status-grid-label mt-1">Temperature</div>
-              <div class="col-6 status-grid-value text-end mt-1"><span id="tempVal">42°C</span></div>
+              <div class="col-6 status-grid-value text-end mt-1"><span id="tempVal">42┬░C</span></div>
 
               <div class="col-12 status-grid-label mt-3">Power Level</div>
               <div class="col-12">
@@ -216,42 +210,12 @@
             <i class="bi bi-terminal me-2"></i>Event Console
           </div>
           <div id="console" class="card-body console small">
-            <div class="text-muted">System ready. Awaiting operator commands…</div>
+            <div class="text-muted">System ready. Awaiting operator commandsΓאª</div>
           </div>
         </div>
       </div>
     </div>
   </main>
-
-  <!-- Camera IP Modal -->
-  <div class="modal fade" id="cameraIpModal" tabindex="-1" aria-labelledby="cameraIpModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content card-hud">
-        <div class="modal-header">
-          <h5 class="modal-title" id="cameraIpModalLabel"><i class="bi bi-sliders me-2"></i>Camera Address</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div id="cameraIpModalAlert" class="alert alert-danger d-none" role="alert"></div>
-          <label for="modalCameraBase" class="form-label">Base URL or IP</label>
-          <input
-            id="modalCameraBase"
-            type="text"
-            class="form-control form-control-hud"
-            placeholder="http://10.119.108.61" />
-          <div class="form-text">The live stream expects the <code>/stream</code> path (added automatically).</div>
-        </div>
-        <div class="modal-footer d-flex justify-content-between">
-          <button type="button" class="btn btn-outline-secondary" id="cameraIpResetBtn">
-            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Default
-          </button>
-          <button type="button" class="btn btn-success" id="cameraIpSaveBtn">
-            <i class="bi bi-check2 me-1"></i>Save &amp; Apply
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <footer class="text-center text-muted small py-3">
     <a class="link-hud me-3" href="logs.html"><i class="bi bi-journal-text me-1"></i>View Logs</a>

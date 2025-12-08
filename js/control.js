@@ -12,7 +12,7 @@ const esp32IpInput = document.getElementById('esp32IpInput');
 const esp32ConnectBtn = document.getElementById('esp32ConnectBtn');
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
-const DEFAULT_BASE_URL = 'http://10.119.108.61';
+const DEFAULT_BASE_URL = '';
 const FIREBASE_PATHS = {
   aim: 'aim',
   cameraIP: 'cameraIP',
@@ -178,21 +178,23 @@ function setStream(baseUrl, { syncToFirebase = false } = {}) {
 
 function updateBaseFromInput(rawValue, syncToFirebase = false) {
   const normalized = setStream(rawValue, { syncToFirebase });
-  if (normalized) {
+  if (normalized && urlInput) {
     urlInput.value = normalized;
   }
   return normalized;
 }
 
-connectBtn.addEventListener('click', () => {
-  updateBaseFromInput(urlInput.value, true);
-});
-
-urlInput.addEventListener('keyup', (event) => {
-  if (event.key === 'Enter') {
+if (connectBtn && urlInput) {
+  connectBtn.addEventListener('click', () => {
     updateBaseFromInput(urlInput.value, true);
-  }
-});
+  });
+
+  urlInput.addEventListener('keyup', (event) => {
+    if (event.key === 'Enter') {
+      updateBaseFromInput(urlInput.value, true);
+    }
+  });
+}
 
 if (esp32ConnectBtn && esp32IpInput) {
   const saveEsp32FromInput = () => {
@@ -264,12 +266,6 @@ if (cameraIpModal && modalInput && modalSaveBtn && modalResetBtn) {
 }
 
 function initCameraBase() {
-  const local = localStorage.getItem(STORAGE_KEY);
-  if (local) {
-    updateBaseFromInput(local);
-    return; // Prefer local override; do not auto-override from Firebase.
-  }
-
   const database = getDb();
   if (database) {
     database
@@ -284,6 +280,13 @@ function initCameraBase() {
         }
       })
       .catch((err) => console.error('Failed to load camera IP from Firebase', err));
+
+    database.ref(FIREBASE_PATHS.cameraIP).on('value', (snapshot) => {
+      const value = snapshot.val();
+      if (value) {
+        updateBaseFromInput(value);
+      }
+    });
   } else if (DEFAULT_BASE_URL) {
     updateBaseFromInput(DEFAULT_BASE_URL);
   }
