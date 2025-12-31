@@ -22,7 +22,9 @@
 
   const auth = firebase.auth(app);
 
+  // logs in a user using email and password via firebase auth
   async function loginWithEmail(rawEmail, rawPassword) {
+    // Validat   e inputs and attempt Firebase email/password sign-in.
     const email = (rawEmail || '').trim();
     const password = rawPassword || '';
 
@@ -38,7 +40,9 @@
     }
   }
 
+  // converts firebase auth error codes into user-friendly messages
   function friendlyEmailError(error) {
+    // Map Firebase auth error codes to readable messages.
     if (!error || !error.code) {
       return 'Authentication failed. Try again.';
     }
@@ -58,25 +62,35 @@
     }
   }
 
+  // signs out the currently authenticated user
   function logout() {
+    // Call Firebase signOut to log the user out.
     return auth.signOut();
   }
 
+  // checks whether a user is currently authenticated
   function isAuthenticated() {
+    // Return true if Firebase has a current user object.
     return Boolean(auth.currentUser);
   }
 
+  // registers a listener for authentication state changes
   function onAuthChanged(callback) {
+    // Subscribe to auth state changes and forward to callback.
     return auth.onAuthStateChanged(callback);
   }
 
+  // builds an encoded redirect parameter based on the current page
   function buildRedirectParam() {
+    // Encode the current page path/query/hash for redirect after login.
     const { pathname, search, hash } = window.location;
     const fragment = `${pathname.split('/').pop() || ''}${search || ''}${hash || ''}`;
     return encodeURIComponent(fragment || 'control.html');
   }
 
+  // protects a page by redirecting unauthenticated users to the login page
   function requireAuth(options = {}) {
+    // Guard protected pages: redirect unauthenticated users and expose hooks.
     const loginPage = options.loginPage || 'index.html';
     const skipRedirect = Boolean(options.skipRedirect);
     const disableRedirectParam = Boolean(options.disableRedirectParam);

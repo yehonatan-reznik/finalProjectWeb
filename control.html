@@ -63,17 +63,18 @@
             <div class="d-flex align-items-center gap-3 flex-wrap">
               <span id="cameraStatus" class="camera-status-text">Stream idle</span>
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="input-group input-group-sm" style="max-width: 280px;">
-                  <span class="input-group-text bg-secondary text-light">Camera IP</span>
+                <div class="input-group input-group-sm flex-nowrap" style="max-width: 360px;">
+                  <span class="input-group-text bg-secondary text-light">Camera URL</span>
                   <input
                     id="cameraUrlInput"
                     type="text"
                     class="form-control"
-                    placeholder="Loading from Firebase..."
+                    placeholder="http://camera-ip:81/stream"
                     aria-label="Camera base URL"
-                    readonly />
+                    autocomplete="url" />
+                  <button id="cameraConnectBtn" class="btn btn-outline-info">Set</button>
                 </div>
-                <span class="badge bg-info text-dark">Auto from Firebase</span>
+                <span class="badge bg-secondary">Direct HTTP</span>
               </div>
             </div>
           </div>
@@ -88,8 +89,8 @@
                 id="cameraPlaceholder"
                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center text-muted px-4 text-center">
                 <i class="bi bi-camera-video-off display-6 mb-3 text-secondary"></i>
-                <p class="mb-2">Waiting for ESP32-CAM address from Firebase…</p>
-                <p class="small text-muted mb-0">Update <code>cameraIP</code> in Realtime Database to change the stream source.</p>
+                <p class="mb-2">Enter the ESP32-CAM stream URL above to begin streaming.</p>
+                <p class="small text-muted mb-0">The feed loads directly from the camera over HTTP.</p>
               </div>
             </div>
           </div>
@@ -114,7 +115,7 @@
                     aria-label="ESP32 IP or URL" />
                   <button id="esp32ConnectBtn" class="btn btn-outline-info">Connect</button>
                 </div>
-                <div class="form-text text-muted">Saved locally and synced to Firebase (espIP).</div>
+                <div class="form-text text-muted">Saved locally; commands are sent directly over HTTP to the ESP32.</div>
               </div>
             </div>
             <div class="row g-3 align-items-center">
@@ -141,18 +142,19 @@
               <div class="col-12">
                 <div class="d-grid gap-2">
                   <button id="fireBtn" class="btn btn-danger hud-button">
-                    <i class="bi bi-lightning-charge-fill me-2"></i>Fire Laser
+                    <i class="bi bi-lightning-charge-fill me-2"></i>Laser On
                   </button>
                   <button id="stopLaserBtn" class="btn btn-outline-danger hud-button">
-                    <i class="bi bi-slash-circle me-2"></i>Stop Laser
+                    <i class="bi bi-slash-circle me-2"></i>Laser Off
                   </button>
-                  <button id="scanBtn" class="btn btn-success hud-button">
-                    <i class="bi bi-radar me-2"></i>Scan Mode
+                  <button id="scanBtn" class="btn btn-outline-secondary hud-button" title="Not supported on HTTP firmware">
+                    <i class="bi bi-radar me-2"></i>Scan Mode (N/A)
                   </button>
                   <button id="stopBtn" class="btn btn-outline-light hud-button">
                     <i class="bi bi-stop-circle me-2"></i>Stop Operation
                   </button>
                 </div>
+                <div class="text-muted small mt-2">Laser output is disabled in the current firmware; scan mode is not supported.</div>
               </div>
             </div>
           </div>
@@ -226,7 +228,6 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/control.js"></script>
 
