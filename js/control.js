@@ -25,6 +25,7 @@ const stopBtn = document.getElementById('stopBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 let streamCandidates = [];
 let streamCandidateIndex = 0;
+let isLaserOn = false;
 
 function sendCmd(cmd) {
   // Send a control command directly to the ESP32 over HTTP.
@@ -259,14 +260,20 @@ function wireAimControls() {
 
 function wireActionButtons() {
   // Attach click handlers for fire/stop/laser buttons.
+  const ensureLaserState = (targetOn) => {
+    if (isLaserOn === targetOn) return;
+    sendCmd('laser_toggle');
+    isLaserOn = targetOn;
+  };
+
   if (fireBtn) {
     fireBtn.addEventListener('click', () => {
-      sendCmd('laser_on');
+      ensureLaserState(true);
     });
   }
   if (stopLaserBtn) {
     stopLaserBtn.addEventListener('click', () => {
-      sendCmd('laser_off');
+      ensureLaserState(false);
     });
   }
   if (stopBtn) {
