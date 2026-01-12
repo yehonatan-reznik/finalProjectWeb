@@ -2,6 +2,10 @@ let model;
 let modelReady = false;
 let isDetecting = false;
 let lastDroneCenter = null;
+let liveDetectTimer = null;
+let isLiveStream = false;
+
+const LIVE_DETECT_INTERVAL_MS = 700;
 
 const sourceImage = document.getElementById("sourceImage");
 const overlayCanvas = document.getElementById("overlayCanvas");
@@ -198,7 +202,29 @@ async function runDetection() {
   }
 }
 
+function startLiveDetection() {
+  if (liveDetectTimer) {
+    return;
+  }
+  liveDetectTimer = setInterval(() => {
+    if (!sourceImage.src || !isLiveStream) {
+      return;
+    }
+    runDetection();
+  }, LIVE_DETECT_INTERVAL_MS);
+}
+
+function stopLiveDetection() {
+  if (!liveDetectTimer) {
+    return;
+  }
+  clearInterval(liveDetectTimer);
+  liveDetectTimer = null;
+}
+
 function loadImageFromFile(file) {
+  isLiveStream = false;
+  stopLiveDetection();
   const reader = new FileReader();
   reader.onload = () => {
     sourceImage.onload = () => {
@@ -215,10 +241,13 @@ function loadImageFromFile(file) {
 }
 
 function loadImageFromEsp(url) {
+  isLiveStream = false;
+  stopLiveDetection();
   if (!url) {
     setStatus("הכנס כתובת ESP32-CAM תקינה.");
     return;
   }
+  isLiveStream = true;
   sourceImage.onload = () => {
     resizeCanvasToImage();
     clearOverlay();
@@ -226,6 +255,7 @@ function loadImageFromEsp(url) {
     clearCoordReadout();
     setStatus("תמונה מה‑ESP32 נטענה. אפשר להריץ זיהוי.");
     detectButton.disabled = false;
+    startLiveDetection();
   };
   sourceImage.onerror = () => {
     setStatus("שגיאה בטעינת תמונה מה‑ESP32. בדוק את ה‑URL ו‑CORS.");
