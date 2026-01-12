@@ -23,9 +23,25 @@ const stopLaserBtn = document.getElementById('stopLaserBtn');
 const scanBtn = document.getElementById('scanBtn');
 const stopBtn = document.getElementById('stopBtn');
 const logoutBtn = document.getElementById('logoutBtn');
+const overlayCanvas = document.getElementById('cameraOverlay');
+const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+const detectStatus = document.getElementById('detectStatus');
+const consolePanel = document.getElementById('console');
+const safetyDot = document.getElementById('safetyDot');
+const safetyVal = document.getElementById('safetyVal');
 let streamCandidates = [];
 let streamCandidateIndex = 0;
 let isLaserOn = false;
+let detectTimer = null;
+let detectModel = null;
+let detectModelReady = false;
+let isDetecting = false;
+let lastDroneState = null;
+let lastDroneLabel = '';
+
+const DRONE_LABELS = ['airplane', 'bird', 'kite'];
+const DETECT_INTERVAL_MS = 700;
+const DETECT_SCORE_THRESHOLD = 0.45;
 
 function sendCmd(cmd) {
   // Send a control command directly to the ESP32 over HTTP.
@@ -42,6 +58,216 @@ function sendCmd(cmd) {
       }
     })
     .catch((err) => console.error(`Command ${cmd} failed:`, err));
+}
+
+function logConsole(message, variant) {
+  if (!consolePanel) return;
+  const entry = document.createElement('div');
+  if (variant) {
+    entry.className = variant;
+  }
+  const timestamp = new Date().toLocaleTimeString();
+  entry.textContent = `[${timestamp}] ${message}`;
+  consolePanel.appendChild(entry);
+  consolePanel.scrollTop = consolePanel.scrollHeight;
+}
+
+function setDetectStatus(text, variant) {
+  if (!detectStatus) return;
+  detectStatus.textContent = text;
+  detectStatus.className = 'badge';
+  const classes = (variant || 'bg-secondary').split(' ');
+  classes.forEach((cls) => detectStatus.classList.add(cls));
+}
+
+function setSafetyState(state, text) {
+  if (!safetyDot || !safetyVal) return;
+  safetyDot.classList.remove('status-ok', 'status-warn', 'status-danger');
+  if (state === 'danger') {
+    safetyDot.classList.add('status-danger');
+    safetyVal.textContent = text || 'Drone detected';
+  } else if (state === 'warn') {
+    safetyDot.classList.add('status-warn');
+    safetyVal.textContent = text || 'Scanning';
+  } else {
+    safetyDot.classList.add('status-ok');
+    safetyVal.textContent = text || 'Safe';
+  }
+}
+
+function syncOverlaySize() {
+  if (!overlayCanvas || !feedImg) return;
+  const container = feedImg.parentElement;
+  if (!container) return;
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  if (!width || !height) return;
+  overlayCanvas.width = Math.round(width);
+  overlayCanvas.height = Math.round(height);
+}
+
+function clearOverlay() {
+  if (!overlayCtx || !overlayCanvas) return;
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+}
+
+function getImageFit() {
+  if (!feedImg) return null;
+  const container = feedImg.parentElement;
+  if (!container) return null;
+  const naturalWidth = feedImg.naturalWidth;
+  const naturalHeight = feedImg.naturalHeight;
+  if (!naturalWidth || !naturalHeight) return null;
+  const containerWidth = container.clientWidth;
+  const containerHeight = container.clientHeight;
+  if (!containerWidth || !containerHeight) return null;
+  const objectFit = window.getComputedStyle(feedImg).objectFit || 'contain';
+  const scale =
+    objectFit === 'cover'
+      ? Math.max(containerWidth / naturalWidth, containerHeight / naturalHeight)
+      : Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
+  const displayWidth = naturalWidth * scale;
+  const displayHeight = naturalHeight * scale;
+  const offsetX = (containerWidth - displayWidth) / 2;
+  const offsetY = (containerHeight - displayHeight) / 2;
+  return { scale, offsetX, offsetY };
+}
+
+function drawDetections(detections) {
+  if (!overlayCtx || !overlayCanvas) return;
+  syncOverlaySize();
+  clearOverlay();
+  if (!detections.length) return;
+  const fit = getImageFit();
+  if (!fit) return;
+  const { scale, offsetX, offsetY } = fit;
+  overlayCtx.lineWidth = 2;
+  overlayCtx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
+  overlayCtx.textBaseline = 'top';
+  detections.forEach((det) => {
+    const score = det.score || 0;
+    const [rawX, rawY, rawW, rawH] = det.bbox;
+    const x = rawX * scale + offsetX;
+    const y = rawY * scale + offsetY;
+    const w = rawW * scale;
+    const h = rawH * scale;
+    if (w <= 0 || h <= 0) return;
+    overlayCtx.strokeStyle = '#ff4d4d';
+    overlayCtx.strokeRect(x, y, w, h);
+    const label = `${det.class} ${(score * 100).toFixed(1)}%`;
+    const textWidth = overlayCtx.measureText(label).width + 8;
+    overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    overlayCtx.fillRect(x, Math.max(0, y - 16), textWidth, 16);
+    overlayCtx.fillStyle = '#f8fafc';
+    overlayCtx.fillText(label, x + 4, Math.max(0, y - 15));
+  });
+}
+
+async function ensureDetectModel() {
+  if (detectModelReady && detectModel) {
+    return detectModel;
+  }
+  if (!window.cocoSsd) {
+    setDetectStatus('Detect: model missing', 'bg-danger');
+    logConsole('COCO-SSD model missing.', 'text-danger');
+    return null;
+  }
+  setDetectStatus('Detect: loading', 'bg-warning');
+  try {
+    detectModel = await cocoSsd.load();
+    detectModelReady = true;
+    setDetectStatus('Detect: ready', 'bg-success');
+    logConsole('Detection model loaded.', 'text-success');
+    return detectModel;
+  } catch (err) {
+    console.error('Detection model load failed', err);
+    setDetectStatus('Detect: load failed', 'bg-danger');
+    logConsole('Detection model load failed.', 'text-danger');
+    return null;
+  }
+}
+
+function startDetectionLoop() {
+  if (detectTimer || !feedImg) return;
+  setDetectStatus('Detect: starting', 'bg-warning');
+  setSafetyState('warn', 'Scanning');
+  if (overlayCanvas) {
+    overlayCanvas.classList.remove('d-none');
+  }
+  detectTimer = setInterval(() => {
+    runDetection();
+  }, DETECT_INTERVAL_MS);
+}
+
+function stopDetectionLoop(reason) {
+  if (detectTimer) {
+    clearInterval(detectTimer);
+    detectTimer = null;
+  }
+  isDetecting = false;
+  clearOverlay();
+  if (overlayCanvas) {
+    overlayCanvas.classList.add('d-none');
+  }
+  lastDroneState = null;
+  lastDroneLabel = '';
+  if (reason === 'idle') {
+    setDetectStatus('Detect idle', 'bg-secondary');
+    setSafetyState('ok', 'Safe');
+  } else if (reason === 'error') {
+    setDetectStatus('Detect: stream error', 'bg-warning');
+  }
+}
+
+async function runDetection() {
+  if (isDetecting || !feedImg) return;
+  if (!feedImg.src || feedImg.classList.contains('d-none')) return;
+  if (!feedImg.complete || feedImg.naturalWidth === 0) return;
+  isDetecting = true;
+  try {
+    const model = await ensureDetectModel();
+    if (!model) return;
+    const predictions = await model.detect(feedImg);
+    const droneDetections = predictions.filter(
+      (p) =>
+        DRONE_LABELS.includes(p.class) &&
+        (p.score || 0) >= DETECT_SCORE_THRESHOLD
+    );
+    drawDetections(droneDetections);
+    if (droneDetections.length) {
+      const best = droneDetections.reduce((a, b) =>
+        (a.score || 0) > (b.score || 0) ? a : b
+      );
+      const scoreText = ((best.score || 0) * 100).toFixed(1);
+      const labelText = `${best.class} ${scoreText}%`;
+      setDetectStatus('Detect: drone', 'bg-danger');
+      setSafetyState('danger', 'Drone detected');
+      if (lastDroneState !== true || lastDroneLabel !== labelText) {
+        logConsole(`Drone-like detection: ${labelText}`, 'text-danger');
+      }
+      lastDroneState = true;
+      lastDroneLabel = labelText;
+    } else {
+      setDetectStatus('Detect: clear', 'bg-success');
+      setSafetyState('ok', 'Safe');
+      if (lastDroneState !== false) {
+        logConsole('No drone detected.', 'text-success');
+      }
+      lastDroneState = false;
+      lastDroneLabel = '';
+    }
+  } catch (err) {
+    console.error('Detection failed', err);
+    setDetectStatus('Detect: error', 'bg-danger');
+    setSafetyState('warn', 'Scanning');
+    if (lastDroneState !== null) {
+      logConsole('Detection error (check CORS/stream).', 'text-warning');
+    }
+    lastDroneState = null;
+    lastDroneLabel = '';
+  } finally {
+    isDetecting = false;
+  }
 }
 
 function normalizeBaseUrl(raw) {
@@ -97,6 +323,7 @@ function setStream(baseUrl) {
     placeholder.classList.remove('d-none');
     statusLabel.textContent = 'Stream idle';
     localStorage.removeItem(STORAGE_KEY);
+    stopDetectionLoop('idle');
     return '';
   }
 
@@ -108,6 +335,8 @@ function setStream(baseUrl) {
   feedImg.classList.remove('d-none');
   placeholder.classList.add('d-none');
   statusLabel.textContent = 'Streaming from ' + streamUrl;
+  setDetectStatus('Detect: waiting', 'bg-secondary');
+  setSafetyState('warn', 'Scanning');
   localStorage.setItem(STORAGE_KEY, normalized);
   return normalized;
 }
@@ -155,7 +384,16 @@ if (esp32ConnectBtn && esp32IpInput) {
 }
 
 if (feedImg) {
+  feedImg.addEventListener('load', () => {
+    syncOverlaySize();
+    if (overlayCanvas) {
+      overlayCanvas.classList.remove('d-none');
+    }
+    startDetectionLoop();
+  });
+
   feedImg.addEventListener('error', () => {
+    stopDetectionLoop('error');
     if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
       streamCandidateIndex += 1;
       const nextUrl = streamCandidates[streamCandidateIndex];
@@ -309,6 +547,9 @@ initEsp32Ip();
 wireAimControls();
 wireActionButtons();
 wireLogout();
+window.addEventListener('resize', () => {
+  syncOverlaySize();
+});
 
 if (window.SkyShieldAuth) {
   window.SkyShieldAuth.requireAuth();
