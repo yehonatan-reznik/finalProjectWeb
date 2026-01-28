@@ -1,3 +1,4 @@
+// === DOM bindings for camera UI ===
 const feedImg = document.getElementById('cameraFeed');
 const placeholder = document.getElementById('cameraPlaceholder');
 const urlInput = document.getElementById('cameraUrlInput');
@@ -8,11 +9,14 @@ const modalInput = document.getElementById('modalCameraBase');
 const modalAlert = document.getElementById('cameraIpModalAlert');
 const modalSaveBtn = document.getElementById('cameraIpSaveBtn');
 const modalResetBtn = document.getElementById('cameraIpResetBtn');
+// === DOM bindings for ESP32 control ===
 const esp32IpInput = document.getElementById('esp32IpInput');
 const esp32ConnectBtn = document.getElementById('esp32ConnectBtn');
+// === Local storage keys and defaults ===
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
 const DEFAULT_BASE_URL = '';
+// === DOM bindings for control buttons ===
 const btnUp = document.getElementById('btnUp');
 const btnDown = document.getElementById('btnDown');
 const btnLeft = document.getElementById('btnLeft');
@@ -23,12 +27,14 @@ const stopLaserBtn = document.getElementById('stopLaserBtn');
 const scanBtn = document.getElementById('scanBtn');
 const stopBtn = document.getElementById('stopBtn');
 const logoutBtn = document.getElementById('logoutBtn');
+// === DOM bindings for detection overlay + status ===
 const overlayCanvas = document.getElementById('cameraOverlay');
 const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
 const detectStatus = document.getElementById('detectStatus');
 const consolePanel = document.getElementById('console');
 const safetyDot = document.getElementById('safetyDot');
 const safetyVal = document.getElementById('safetyVal');
+// === Runtime state ===
 let streamCandidates = [];
 let streamCandidateIndex = 0;
 let isLaserOn = false;
@@ -39,10 +45,12 @@ let isDetecting = false;
 let lastDroneState = null;
 let lastDroneLabel = '';
 
+// === Detection constants ===
 const DRONE_LABELS = ['airplane', 'bird', 'kite'];
 const DETECT_INTERVAL_MS = 700;
 const DETECT_SCORE_THRESHOLD = 0.45;
 
+// === Send commands to ESP32 controller ===
 function sendCmd(cmd) {
   // Send a control command directly to the ESP32 over HTTP.
   const ip = localStorage.getItem(ESP32_STORAGE_KEY);
@@ -60,6 +68,7 @@ function sendCmd(cmd) {
     .catch((err) => console.error(`Command ${cmd} failed:`, err));
 }
 
+// === Append a message to the console panel ===
 function logConsole(message, variant) {
   if (!consolePanel) return;
   const entry = document.createElement('div');
@@ -72,6 +81,7 @@ function logConsole(message, variant) {
   consolePanel.scrollTop = consolePanel.scrollHeight;
 }
 
+// === Update the detection badge with color/status ===
 function setDetectStatus(text, variant) {
   if (!detectStatus) return;
   detectStatus.textContent = text;
@@ -80,6 +90,7 @@ function setDetectStatus(text, variant) {
   classes.forEach((cls) => detectStatus.classList.add(cls));
 }
 
+// === Update the safety indicator (dot + text) ===
 function setSafetyState(state, text) {
   if (!safetyDot || !safetyVal) return;
   safetyDot.classList.remove('status-ok', 'status-warn', 'status-danger');
@@ -95,6 +106,7 @@ function setSafetyState(state, text) {
   }
 }
 
+// === Keep overlay canvas sized to the camera container ===
 function syncOverlaySize() {
   if (!overlayCanvas || !feedImg) return;
   const container = feedImg.parentElement;
@@ -106,11 +118,13 @@ function syncOverlaySize() {
   overlayCanvas.height = Math.round(height);
 }
 
+// === Clear all drawings from the overlay canvas ===
 function clearOverlay() {
   if (!overlayCtx || !overlayCanvas) return;
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 }
 
+// === Compute how the image fits inside the container ===
 function getImageFit() {
   if (!feedImg) return null;
   const container = feedImg.parentElement;
@@ -133,6 +147,7 @@ function getImageFit() {
   return { scale, offsetX, offsetY };
 }
 
+// === Draw bounding boxes and labels for detections ===
 function drawDetections(detections) {
   if (!overlayCtx || !overlayCanvas) return;
   syncOverlaySize();
@@ -163,6 +178,7 @@ function drawDetections(detections) {
   });
 }
 
+// === Load the COCO-SSD model once and reuse it ===
 async function ensureDetectModel() {
   if (detectModelReady && detectModel) {
     return detectModel;
@@ -187,6 +203,7 @@ async function ensureDetectModel() {
   }
 }
 
+// === Start periodic detection loop ===
 function startDetectionLoop() {
   if (detectTimer || !feedImg) return;
   setDetectStatus('Detect: starting', 'bg-warning');
@@ -199,6 +216,7 @@ function startDetectionLoop() {
   }, DETECT_INTERVAL_MS);
 }
 
+// === Stop detection loop and reset UI ===
 function stopDetectionLoop(reason) {
   if (detectTimer) {
     clearInterval(detectTimer);
@@ -219,6 +237,7 @@ function stopDetectionLoop(reason) {
   }
 }
 
+// === Run a single detection pass ===
 async function runDetection() {
   if (isDetecting || !feedImg) return;
   if (!feedImg.src || feedImg.classList.contains('d-none')) return;
@@ -270,6 +289,7 @@ async function runDetection() {
   }
 }
 
+// === Normalize a user-provided URL ===
 function normalizeBaseUrl(raw) {
   // Clean and standardize a user-provided base URL.
   let url = raw.trim();
@@ -280,6 +300,7 @@ function normalizeBaseUrl(raw) {
   return url.replace(/\/+$/, '');
 }
 
+// === Build a list of possible stream endpoints ===
 function buildStreamCandidates(normalized) {
   // Generate possible stream URLs based on a base address.
   try {
@@ -303,6 +324,7 @@ function buildStreamCandidates(normalized) {
   }
 }
 
+// === Save and apply ESP32 IP address ===
 function applyEsp32Ip(rawValue) {
   // Normalize and persist the ESP32 IP locally.
   const normalized = normalizeBaseUrl(rawValue);
@@ -314,6 +336,7 @@ function applyEsp32Ip(rawValue) {
   return normalized;
 }
 
+// === Configure camera stream and update UI ===
 function setStream(baseUrl) {
   // Configure the camera stream URL and update UI/storage.
   const normalized = normalizeBaseUrl(baseUrl);
@@ -341,6 +364,7 @@ function setStream(baseUrl) {
   return normalized;
 }
 
+// === Apply base URL input to stream ===
 function updateBaseFromInput(rawValue) {
   // Apply a camera URL from user input.
   const normalized = setStream(rawValue);
@@ -350,6 +374,7 @@ function updateBaseFromInput(rawValue) {
   return normalized;
 }
 
+// === Wire camera URL input + button ===
 if (connectBtn && urlInput) {
   const saveCameraUrl = () => {
     const normalized = updateBaseFromInput(urlInput.value);
@@ -367,6 +392,7 @@ if (connectBtn && urlInput) {
   });
 }
 
+// === Wire ESP32 IP input + button ===
 if (esp32ConnectBtn && esp32IpInput) {
   const saveEsp32FromInput = () => {
     const normalized = applyEsp32Ip(esp32IpInput.value);
@@ -383,6 +409,7 @@ if (esp32ConnectBtn && esp32IpInput) {
   });
 }
 
+// === Handle camera image load/error ===
 if (feedImg) {
   feedImg.addEventListener('load', () => {
     syncOverlaySize();
@@ -407,6 +434,7 @@ if (feedImg) {
   });
 }
 
+// === Optional camera IP modal handlers ===
 if (cameraIpModal && modalInput && modalSaveBtn && modalResetBtn) {
   function showModalAlert(message, variant = 'danger') {
     // Display a feedback message inside the camera IP modal.
@@ -449,6 +477,7 @@ if (cameraIpModal && modalInput && modalSaveBtn && modalResetBtn) {
   });
 }
 
+// === Initialize camera base URL from storage ===
 function initCameraBase() {
   // Load camera base URL from local storage or defaults.
   if (urlInput) {
@@ -466,6 +495,7 @@ function initCameraBase() {
   }
 }
 
+// === Initialize ESP32 IP from storage ===
 function initEsp32Ip() {
   // Load ESP32 IP from local storage.
   if (esp32IpInput) {
@@ -477,6 +507,7 @@ function initEsp32Ip() {
   }
 }
 
+// === Wire directional aim controls ===
 function wireAimControls() {
   // Attach click handlers for directional aim buttons.
   if (btnUp) btnUp.addEventListener('click', () => {
@@ -496,6 +527,7 @@ function wireAimControls() {
   });
 }
 
+// === Wire action buttons (laser/stop/scan) ===
 function wireActionButtons() {
   // Attach click handlers for fire/stop/laser buttons.
   const ensureLaserState = (targetOn) => {
@@ -526,6 +558,7 @@ function wireActionButtons() {
   }
 }
 
+// === Wire logout button ===
 function wireLogout() {
   // Attach logout behavior and redirect to login page.
   if (!logoutBtn) return;
@@ -542,15 +575,18 @@ function wireLogout() {
   });
 }
 
+// === Run startup initialization ===
 initCameraBase();
 initEsp32Ip();
 wireAimControls();
 wireActionButtons();
 wireLogout();
+// === Keep overlay synced on resize ===
 window.addEventListener('resize', () => {
   syncOverlaySize();
 });
 
+// === Protect page by requiring authentication ===
 if (window.SkyShieldAuth) {
   window.SkyShieldAuth.requireAuth();
 } else {
