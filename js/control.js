@@ -4,6 +4,7 @@ const placeholder = document.getElementById('cameraPlaceholder');
 const urlInput = document.getElementById('cameraUrlInput');
 const connectBtn = document.getElementById('cameraConnectBtn');
 const statusLabel = document.getElementById('cameraStatus');
+const proxyToggle = document.getElementById('proxyToggle');
 const cameraIpModal = document.getElementById('cameraIpModal');
 const modalInput = document.getElementById('modalCameraBase');
 const modalAlert = document.getElementById('cameraIpModalAlert');
@@ -15,7 +16,9 @@ const esp32ConnectBtn = document.getElementById('esp32ConnectBtn');
 // === Local storage keys and defaults ===
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
+const PROXY_ENABLED_STORAGE_KEY = 'skyshield_camera_proxy_enabled';
 const DEFAULT_BASE_URL = '';
+const DEFAULT_PROXY_URL = 'http://127.0.0.1:3001/proxy?url=';
 // === DOM bindings for control buttons ===
 const btnUp = document.getElementById('btnUp');
 const btnDown = document.getElementById('btnDown');
@@ -39,6 +42,7 @@ let streamCandidates = [];
 let streamCandidateIndex = 0;
 let isLaserOn = false;
 let detectTimer = null;
+let detectLoopActive = false;
 let detectModel = null;
 let detectModelReady = false;
 let isDetecting = false;
@@ -46,9 +50,13 @@ let lastDroneState = null;
 let lastDroneLabel = '';
 
 // === Detection constants ===
-const DRONE_LABELS = ['airplane', 'bird', 'kite'];
-const DETECT_INTERVAL_MS = 700;
-const DETECT_SCORE_THRESHOLD = 0.45;
+// COCO-SSD does not include a dedicated "drone" class.
+// We treat airplane labels as the closest proxy for drone/aircraft detection.
+const DRONE_LABELS = ['airplane', 'aeroplane'];
+const DETECT_TARGET_INTERVAL_MS = 180;
+const DETECT_SCORE_THRESHOLD = 0.15;
+const DETECT_POSSIBLE_SCORE_THRESHOLD = 0.05;
+const DETECT_DRAW_SCORE_THRESHOLD = 0.05;
 
 // === Send commands to ESP32 controller ===
 function sendCmd(cmd) {
@@ -161,20 +169,25 @@ function drawDetections(detections) {
   overlayCtx.textBaseline = 'top';
   detections.forEach((det) => {
     const score = det.score || 0;
+    const isTarget = !!det.isTarget;
+    const isPossible = !!det.isPossible;
     const [rawX, rawY, rawW, rawH] = det.bbox;
     const x = rawX * scale + offsetX;
     const y = rawY * scale + offsetY;
     const w = rawW * scale;
     const h = rawH * scale;
     if (w <= 0 || h <= 0) return;
-    overlayCtx.strokeStyle = '#ff4d4d';
+    overlayCtx.strokeStyle = isTarget ? '#ff4d4d' : '#22c55e';
+    overlayCtx.setLineDash(isTarget ? [] : [4, 3]);
     overlayCtx.strokeRect(x, y, w, h);
-    const label = `${det.class} ${(score * 100).toFixed(1)}%`;
+    const prefix = isTarget ? 'TARGET ' : isPossible ? 'POSSIBLE ' : '';
+    const label = `${prefix}${det.class} ${(score * 100).toFixed(1)}%`;
     const textWidth = overlayCtx.measureText(label).width + 8;
-    overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    overlayCtx.fillStyle = isTarget ? 'rgba(120, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.65)';
     overlayCtx.fillRect(x, Math.max(0, y - 16), textWidth, 16);
     overlayCtx.fillStyle = '#f8fafc';
     overlayCtx.fillText(label, x + 4, Math.max(0, y - 15));
+    overlayCtx.setLineDash([]);
   });
 }
 
@@ -205,21 +218,39 @@ async function ensureDetectModel() {
 
 // === Start periodic detection loop ===
 function startDetectionLoop() {
-  if (detectTimer || !feedImg) return;
+  if (detectLoopActive || !feedImg) return;
+  detectLoopActive = true;
   setDetectStatus('Detect: starting', 'bg-warning');
   setSafetyState('warn', 'Scanning');
+  logConsole('Detection loop started.', 'text-info');
   if (overlayCanvas) {
     overlayCanvas.classList.remove('d-none');
   }
-  detectTimer = setInterval(() => {
-    runDetection();
-  }, DETECT_INTERVAL_MS);
+  scheduleNextDetection(0);
+}
+
+// === Schedule the next detection pass ===
+function scheduleNextDetection(delayMs) {
+  if (!detectLoopActive) return;
+  if (detectTimer) {
+    clearTimeout(detectTimer);
+    detectTimer = null;
+  }
+  detectTimer = setTimeout(async () => {
+    detectTimer = null;
+    const startedAt = performance.now();
+    await runDetection();
+    const elapsed = performance.now() - startedAt;
+    const nextDelay = Math.max(0, DETECT_TARGET_INTERVAL_MS - elapsed);
+    scheduleNextDetection(nextDelay);
+  }, Math.max(0, delayMs || 0));
 }
 
 // === Stop detection loop and reset UI ===
 function stopDetectionLoop(reason) {
+  detectLoopActive = false;
   if (detectTimer) {
-    clearInterval(detectTimer);
+    clearTimeout(detectTimer);
     detectTimer = null;
   }
   isDetecting = false;
@@ -247,43 +278,81 @@ async function runDetection() {
     const model = await ensureDetectModel();
     if (!model) return;
     const predictions = await model.detect(feedImg);
-    const droneDetections = predictions.filter(
+    const strongDroneDetections = predictions.filter(
       (p) =>
         DRONE_LABELS.includes(p.class) &&
         (p.score || 0) >= DETECT_SCORE_THRESHOLD
     );
-    drawDetections(droneDetections);
-    if (droneDetections.length) {
-      const best = droneDetections.reduce((a, b) =>
+    const possibleDroneDetections = predictions.filter(
+      (p) =>
+        DRONE_LABELS.includes(p.class) &&
+        (p.score || 0) >= DETECT_POSSIBLE_SCORE_THRESHOLD
+    );
+    const drawDetectionsList = predictions
+      .filter((p) => (p.score || 0) >= DETECT_DRAW_SCORE_THRESHOLD)
+      .map((p) => {
+        const score = p.score || 0;
+        const isTargetLabel = DRONE_LABELS.includes(p.class);
+        return {
+          ...p,
+          isTarget: isTargetLabel && score >= DETECT_SCORE_THRESHOLD,
+          isPossible: isTargetLabel && score >= DETECT_POSSIBLE_SCORE_THRESHOLD,
+        };
+      });
+    drawDetections(drawDetectionsList);
+
+    if (strongDroneDetections.length) {
+      const best = strongDroneDetections.reduce((a, b) =>
         (a.score || 0) > (b.score || 0) ? a : b
       );
       const scoreText = ((best.score || 0) * 100).toFixed(1);
       const labelText = `${best.class} ${scoreText}%`;
       setDetectStatus('Detect: drone', 'bg-danger');
       setSafetyState('danger', 'Drone detected');
-      if (lastDroneState !== true || lastDroneLabel !== labelText) {
-        logConsole(`Drone-like detection: ${labelText}`, 'text-danger');
+      if (lastDroneState !== 'drone' || lastDroneLabel !== labelText) {
+        logConsole(`Target detected: ${labelText}`, 'text-danger');
       }
-      lastDroneState = true;
+      lastDroneState = 'drone';
+      lastDroneLabel = labelText;
+    } else if (possibleDroneDetections.length) {
+      const best = possibleDroneDetections.reduce((a, b) =>
+        (a.score || 0) > (b.score || 0) ? a : b
+      );
+      const scoreText = ((best.score || 0) * 100).toFixed(1);
+      const labelText = `${best.class} ${scoreText}%`;
+      setDetectStatus('Detect: possible', 'bg-warning text-dark');
+      setSafetyState('warn', 'Possible drone');
+      if (lastDroneState !== 'possible' || lastDroneLabel !== labelText) {
+        logConsole(`Possible target: ${labelText}`, 'text-warning');
+      }
+      lastDroneState = 'possible';
       lastDroneLabel = labelText;
     } else {
-      setDetectStatus('Detect: clear', 'bg-success');
-      setSafetyState('ok', 'Safe');
-      if (lastDroneState !== false) {
-        logConsole('No drone detected.', 'text-success');
+      let clearLabel = 'Detect: clear';
+      if (predictions.length) {
+        const top = predictions.reduce((a, b) => ((a.score || 0) > (b.score || 0) ? a : b));
+        clearLabel = `Detect: clear (${top.class})`;
       }
-      lastDroneState = false;
+      setDetectStatus(clearLabel, 'bg-success');
+      setSafetyState('ok', 'Safe');
+      if (lastDroneState !== 'clear') {
+        logConsole('No target detected.', 'text-success');
+      }
+      lastDroneState = 'clear';
       lastDroneLabel = '';
     }
   } catch (err) {
     console.error('Detection failed', err);
     setDetectStatus('Detect: error', 'bg-danger');
     setSafetyState('warn', 'Scanning');
-    if (lastDroneState !== null) {
-      logConsole('Detection error (check CORS/stream).', 'text-warning');
+    const errorText =
+      (err && typeof err.message === 'string' && err.message.trim()) ||
+      'check CORS/proxy/stream';
+    if (lastDroneState !== 'error' || lastDroneLabel !== errorText) {
+      logConsole(`Detection error: ${errorText}`, 'text-warning');
     }
-    lastDroneState = null;
-    lastDroneLabel = '';
+    lastDroneState = 'error';
+    lastDroneLabel = errorText;
   } finally {
     isDetecting = false;
   }
@@ -298,6 +367,24 @@ function normalizeBaseUrl(raw) {
     url = 'http://' + url;
   }
   return url.replace(/\/+$/, '');
+}
+
+// === Read proxy enabled state from UI/local storage ===
+function isProxyEnabled() {
+  if (proxyToggle) return proxyToggle.checked;
+  return localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
+}
+
+// === Convert camera URL into proxied URL when enabled ===
+function buildStreamRequestUrl(targetUrl) {
+  if (!isProxyEnabled()) return targetUrl;
+  return DEFAULT_PROXY_URL + encodeURIComponent(targetUrl);
+}
+
+// === Persist proxy settings from controls ===
+function saveProxySettings() {
+  const enabled = isProxyEnabled() ? '1' : '0';
+  localStorage.setItem(PROXY_ENABLED_STORAGE_KEY, enabled);
 }
 
 // === Build a list of possible stream endpoints ===
@@ -341,6 +428,8 @@ function setStream(baseUrl) {
   // Configure the camera stream URL and update UI/storage.
   const normalized = normalizeBaseUrl(baseUrl);
   if (!normalized) {
+    streamCandidates = [];
+    streamCandidateIndex = 0;
     feedImg.src = '';
     feedImg.classList.add('d-none');
     placeholder.classList.remove('d-none');
@@ -350,14 +439,23 @@ function setStream(baseUrl) {
     return '';
   }
 
-  streamCandidates = buildStreamCandidates(normalized);
+  const directCandidates = buildStreamCandidates(normalized);
+  streamCandidates = directCandidates.map((directUrl) => ({
+    directUrl,
+    requestUrl: buildStreamRequestUrl(directUrl),
+  }));
   streamCandidateIndex = 0;
-  const streamUrl = streamCandidates[streamCandidateIndex] || '';
+  const firstCandidate = streamCandidates[streamCandidateIndex] || null;
+  if (!firstCandidate) {
+    statusLabel.textContent = 'Stream error - invalid URL';
+    return '';
+  }
 
-  feedImg.src = streamUrl;
+  feedImg.src = firstCandidate.requestUrl;
   feedImg.classList.remove('d-none');
   placeholder.classList.add('d-none');
-  statusLabel.textContent = 'Streaming from ' + streamUrl;
+  const suffix = isProxyEnabled() ? ' (via proxy)' : '';
+  statusLabel.textContent = 'Streaming from ' + firstCandidate.directUrl + suffix;
   setDetectStatus('Detect: waiting', 'bg-secondary');
   setSafetyState('warn', 'Scanning');
   localStorage.setItem(STORAGE_KEY, normalized);
@@ -392,6 +490,19 @@ if (connectBtn && urlInput) {
   });
 }
 
+// === Wire proxy settings controls ===
+if (proxyToggle) {
+  const applyProxySettings = () => {
+    saveProxySettings();
+    const currentCamera = urlInput ? urlInput.value.trim() : '';
+    if (currentCamera) {
+      updateBaseFromInput(currentCamera);
+    }
+  };
+
+  proxyToggle.addEventListener('change', applyProxySettings);
+}
+
 // === Wire ESP32 IP input + button ===
 if (esp32ConnectBtn && esp32IpInput) {
   const saveEsp32FromInput = () => {
@@ -423,12 +534,16 @@ if (feedImg) {
     stopDetectionLoop('error');
     if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
       streamCandidateIndex += 1;
-      const nextUrl = streamCandidates[streamCandidateIndex];
-      statusLabel.textContent = 'Retrying stream via ' + nextUrl;
-      feedImg.src = nextUrl;
+      const nextCandidate = streamCandidates[streamCandidateIndex];
+      const suffix = isProxyEnabled() ? ' (via proxy)' : '';
+      statusLabel.textContent = 'Retrying stream via ' + nextCandidate.directUrl + suffix;
+      feedImg.src = nextCandidate.requestUrl;
       return;
     }
-    statusLabel.textContent = 'Stream error - check the address/port/path';
+    const hint = isProxyEnabled()
+      ? 'Stream error - check camera address or local proxy status'
+      : 'Stream error - check the address/port/path';
+    statusLabel.textContent = hint;
     feedImg.classList.add('d-none');
     placeholder.classList.remove('d-none');
   });
@@ -493,6 +608,14 @@ function initCameraBase() {
     if (placeholder) placeholder.classList.remove('d-none');
     if (feedImg) feedImg.classList.add('d-none');
   }
+}
+
+// === Initialize proxy settings from storage ===
+function initProxySettings() {
+  if (!proxyToggle) return;
+  const savedEnabled = localStorage.getItem(PROXY_ENABLED_STORAGE_KEY);
+  proxyToggle.checked = savedEnabled === '1';
+  saveProxySettings();
 }
 
 // === Initialize ESP32 IP from storage ===
@@ -576,6 +699,7 @@ function wireLogout() {
 }
 
 // === Run startup initialization ===
+initProxySettings();
 initCameraBase();
 initEsp32Ip();
 wireAimControls();
