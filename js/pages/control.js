@@ -64,16 +64,20 @@ function sendCmd(cmd) {
   const ip = localStorage.getItem(ESP32_STORAGE_KEY);
   if (!ip) {
     alert('Set the ESP32 address first.');
-    return;
+    return Promise.resolve(null);
   }
   const target = `${ip}/${cmd}`;
-  fetch(target)
+  return fetch(target)
     .then((res) => {
       if (!res.ok) {
         console.warn(`Command ${cmd} responded with status ${res.status}`);
       }
+      return res;
     })
-    .catch((err) => console.error(`Command ${cmd} failed:`, err));
+    .catch((err) => {
+      console.error(`Command ${cmd} failed:`, err);
+      return null;
+    });
 }
 
 // === Append a message to the console panel ===
@@ -387,6 +391,16 @@ function saveProxySettings() {
   localStorage.setItem(PROXY_ENABLED_STORAGE_KEY, enabled);
 }
 
+// === Configure image CORS mode based on proxy usage ===
+function configureFeedCorsMode() {
+  if (!feedImg) return;
+  if (isProxyEnabled()) {
+    feedImg.setAttribute('crossorigin', 'anonymous');
+  } else {
+    feedImg.removeAttribute('crossorigin');
+  }
+}
+
 // === Build a list of possible stream endpoints ===
 function buildStreamCandidates(normalized) {
   // Generate possible stream URLs based on a base address.
@@ -396,6 +410,14 @@ function buildStreamCandidates(normalized) {
     const candidates = [];
     if (hasCustomPath) {
       candidates.push(normalized);
+      const origin = u.origin;
+      if (u.pathname.toLowerCase() !== '/stream') {
+        candidates.push(origin + '/stream');
+      }
+      if (!u.port) {
+        candidates.push(`${u.protocol}//${u.hostname}:81/stream`);
+      }
+      candidates.push(origin);
     } else {
       const base = normalized;
       candidates.push(base + '/stream'); // common default
@@ -423,6 +445,16 @@ function applyEsp32Ip(rawValue) {
   return normalized;
 }
 
+// === Sync laser state from controller status endpoint ===
+async function syncLaserState() {
+  const res = await sendCmd('status');
+  if (!res || !res.ok) return;
+  const text = await res.text();
+  const match = text.match(/laser=(\d)/i);
+  if (!match) return;
+  isLaserOn = match[1] === '1';
+}
+
 // === Configure camera stream and update UI ===
 function setStream(baseUrl) {
   // Configure the camera stream URL and update UI/storage.
@@ -440,6 +472,7 @@ function setStream(baseUrl) {
   }
 
   const directCandidates = buildStreamCandidates(normalized);
+  configureFeedCorsMode();
   streamCandidates = directCandidates.map((directUrl) => ({
     directUrl,
     requestUrl: buildStreamRequestUrl(directUrl),
@@ -456,6 +489,7 @@ function setStream(baseUrl) {
   placeholder.classList.add('d-none');
   const suffix = isProxyEnabled() ? ' (via proxy)' : '';
   statusLabel.textContent = 'Streaming from ' + firstCandidate.directUrl + suffix;
+  logConsole('Attempting camera stream: ' + firstCandidate.directUrl, 'text-muted');
   setDetectStatus('Detect: waiting', 'bg-secondary');
   setSafetyState('warn', 'Scanning');
   localStorage.setItem(STORAGE_KEY, normalized);
@@ -509,7 +543,9 @@ if (esp32ConnectBtn && esp32IpInput) {
     const normalized = applyEsp32Ip(esp32IpInput.value);
     if (!normalized) {
       alert('Enter the ESP32 IP (e.g., http://10.12.22.6)');
+      return;
     }
+    syncLaserState();
   };
 
   esp32ConnectBtn.addEventListener('click', saveEsp32FromInput);
@@ -524,6 +560,7 @@ if (esp32ConnectBtn && esp32IpInput) {
 if (feedImg) {
   feedImg.addEventListener('load', () => {
     syncOverlaySize();
+    logConsole('Camera stream connected.', 'text-success');
     if (overlayCanvas) {
       overlayCanvas.classList.remove('d-none');
     }
@@ -537,6 +574,7 @@ if (feedImg) {
       const nextCandidate = streamCandidates[streamCandidateIndex];
       const suffix = isProxyEnabled() ? ' (via proxy)' : '';
       statusLabel.textContent = 'Retrying stream via ' + nextCandidate.directUrl + suffix;
+      logConsole('Stream retry: ' + nextCandidate.directUrl, 'text-warning');
       feedImg.src = nextCandidate.requestUrl;
       return;
     }
@@ -544,6 +582,10 @@ if (feedImg) {
       ? 'Stream error - check camera address or local proxy status'
       : 'Stream error - check the address/port/path';
     statusLabel.textContent = hint;
+    if (!isProxyEnabled()) {
+      logConsole('Tip: if stream works in browser tab but fails here, enable local proxy toggle.', 'text-warning');
+    }
+    logConsole('Stream failed for all candidates.', 'text-danger');
     feedImg.classList.add('d-none');
     placeholder.classList.remove('d-none');
   });
@@ -627,6 +669,7 @@ function initEsp32Ip() {
   const local = localStorage.getItem(ESP32_STORAGE_KEY);
   if (local && esp32IpInput) {
     esp32IpInput.value = local;
+    syncLaserState();
   }
 }
 
@@ -634,10 +677,12 @@ function initEsp32Ip() {
 function wireAimControls() {
   // Attach click handlers for directional aim buttons.
   if (btnUp) btnUp.addEventListener('click', () => {
-    sendCmd('servo_up');
+    // Camera/servo is mounted inverted on Y axis, so UI up maps to firmware down.
+    sendCmd('servo_down');
   });
   if (btnDown) btnDown.addEventListener('click', () => {
-    sendCmd('servo_down');
+    // Camera/servo is mounted inverted on Y axis, so UI down maps to firmware up.
+    sendCmd('servo_up');
   });
   if (btnLeft) btnLeft.addEventListener('click', () => {
     sendCmd('step_left');
@@ -653,10 +698,20 @@ function wireAimControls() {
 // === Wire action buttons (laser/stop/scan) ===
 function wireActionButtons() {
   // Attach click handlers for fire/stop/laser buttons.
-  const ensureLaserState = (targetOn) => {
+  const ensureLaserState = async (targetOn) => {
+    const directCmd = targetOn ? 'laser_on' : 'laser_off';
+    const directRes = await sendCmd(directCmd);
+    if (directRes && directRes.ok) {
+      isLaserOn = targetOn;
+      return;
+    }
+
+    // Backward compatibility for older firmware that only supports laser_toggle.
     if (isLaserOn === targetOn) return;
-    sendCmd('laser_toggle');
-    isLaserOn = targetOn;
+    const toggleRes = await sendCmd('laser_toggle');
+    if (toggleRes && toggleRes.ok) {
+      isLaserOn = targetOn;
+    }
   };
 
   if (fireBtn) {
