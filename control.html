@@ -70,7 +70,7 @@
                     id="cameraUrlInput"
                     type="text"
                     class="form-control"
-                    placeholder="http://camera-ip:81/stream"
+                    placeholder="http://camera-ip/stream"
                     aria-label="Camera base URL"
                     autocomplete="url" />
                   <button id="cameraConnectBtn" class="btn btn-outline-info">Set</button>
@@ -84,13 +84,15 @@
                 </div>
               </div>
               <div class="form-text text-muted">If enabled, run <code>node code/tools/camera-proxy.mjs</code>.</div>
+              <div class="form-text text-muted">Detection uses generic COCO-SSD classes, not a trained drone model.</div>
             </div>
           </div>
           <div class="card-body">
             <div class="ratio ratio-16x9 camera-shell position-relative overflow-hidden rounded-2 bg-black">
               <img
                 id="cameraFeed"
-                class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover d-none"
+                class="position-absolute top-0 start-0 w-100 h-100 d-none"
+                style="object-fit: contain;"
                 src=""
                 alt="Live camera stream" />
               <canvas
@@ -173,6 +175,16 @@
           </div>
         </div>
 
+        <!-- Event console displays timeline of system events -->
+        <div class="card card-hud mt-3">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-terminal me-2"></i>Event Console
+          </div>
+          <div id="console" class="card-body console small">
+            <div class="text-muted">System ready. Awaiting operator commands.</div>
+          </div>
+        </div>
+
         <!-- Status panel summarizes current system health -->
         <div class="card card-hud status-panel mt-3">
           <div class="card-header fw-semibold">
@@ -195,19 +207,93 @@
             </div>
             <hr class="border-muted opacity-25" />
             <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Safety</div>
+              <div class="col-6 status-grid-value text-end">
+                <span id="safetyDot" class="status-dot status-ok me-2"></span>
+                <span id="safetyVal" class="status-emphasis">Safe</span>
+              </div>
+            </div>
+            <div class="row g-2 status-grid">
               <div class="col-6 status-grid-label">Mode</div>
               <div class="col-6 status-grid-value text-end"><span id="modeVal" class="status-emphasis">Manual</span></div>
             </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Profile</div>
+              <div class="col-6 status-grid-value text-end"><span id="profileVal" class="status-emphasis">Strict aircraft</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Target</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetLabelVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Confidence</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetScoreVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Center Raw (px)</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetCenterVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Center Filt (px)</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetCenterFilteredVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Delta Filt (px)</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetDeltaVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Delta (norm)</div>
+              <div class="col-6 status-grid-value text-end"><span id="targetDeltaNormVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Sim Output</div>
+              <div class="col-6 status-grid-value text-end"><span id="simCommandVal" class="status-emphasis">HOLD / HOLD</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-6 status-grid-label">Loop (ms)</div>
+              <div class="col-6 status-grid-value text-end"><span id="loopTimeVal" class="status-emphasis">n/a</span></div>
+            </div>
           </div>
         </div>
-
-        <!-- Event console displays timeline of system events -->
-        <div class="card card-hud mt-3">
+        <div class="card card-hud status-panel mt-3">
           <div class="card-header fw-semibold">
-            <i class="bi bi-terminal me-2"></i>Event Console
+            <i class="bi bi-sliders me-2"></i>Detection Lab
           </div>
-          <div id="console" class="card-body console small">
-            <div class="text-muted">System ready. Awaiting operator commands.</div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-12">
+                <label for="detectProfileSelect" class="form-label mb-1 text-uppercase small text-muted">Detection Profile</label>
+                <select id="detectProfileSelect" class="form-select form-select-sm">
+                  <option value="strict">Strict aircraft proxy</option>
+                  <option value="broad">Broad air-target demo</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="strongThresholdInput" class="form-label mb-1 text-uppercase small text-muted">Strong Threshold</label>
+                <input id="strongThresholdInput" type="number" class="form-control form-control-sm" min="0.05" max="0.99" step="0.01" value="0.30" />
+              </div>
+              <div class="col-6">
+                <label for="possibleThresholdInput" class="form-label mb-1 text-uppercase small text-muted">Possible Threshold</label>
+                <input id="possibleThresholdInput" type="number" class="form-control form-control-sm" min="0.01" max="0.95" step="0.01" value="0.12" />
+              </div>
+              <div class="col-6">
+                <label for="smoothingInput" class="form-label mb-1 text-uppercase small text-muted">Smoothing Alpha</label>
+                <input id="smoothingInput" type="number" class="form-control form-control-sm" min="0.05" max="1" step="0.05" value="0.35" />
+              </div>
+              <div class="col-6">
+                <label for="deadZoneInput" class="form-label mb-1 text-uppercase small text-muted">Dead Zone</label>
+                <input id="deadZoneInput" type="number" class="form-control form-control-sm" min="0" max="0.5" step="0.01" value="0.08" />
+              </div>
+              <div class="col-12 d-grid gap-2">
+                <button id="downloadTelemetryBtn" class="btn btn-outline-info btn-sm">
+                  <i class="bi bi-download me-2"></i>Download Session Telemetry
+                </button>
+                <button id="clearTelemetryBtn" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-trash me-2"></i>Clear Session Telemetry
+                </button>
+              </div>
+            </div>
+            <div class="form-text text-muted mt-2">Simulation only. No automatic servo commands are generated from detections.</div>
           </div>
         </div>
       </div>

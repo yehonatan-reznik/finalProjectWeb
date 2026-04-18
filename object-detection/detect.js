@@ -260,6 +260,7 @@ function loadImageFromEsp(url) {
   sourceImage.onerror = () => {
     setStatus("שגיאה בטעינת תמונה מה‑ESP32. בדוק את ה‑URL ו‑CORS.");
   };
+  sourceImage.crossOrigin = "anonymous";
   sourceImage.src = url;
 }
 

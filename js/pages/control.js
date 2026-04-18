@@ -1,205 +1,419 @@
-// === DOM bindings for camera UI ===
-const feedImg = document.getElementById('cameraFeed');
-const placeholder = document.getElementById('cameraPlaceholder');
-const urlInput = document.getElementById('cameraUrlInput');
-const connectBtn = document.getElementById('cameraConnectBtn');
-const statusLabel = document.getElementById('cameraStatus');
-const proxyToggle = document.getElementById('proxyToggle');
-const cameraIpModal = document.getElementById('cameraIpModal');
-const modalInput = document.getElementById('modalCameraBase');
-const modalAlert = document.getElementById('cameraIpModalAlert');
-const modalSaveBtn = document.getElementById('cameraIpSaveBtn');
-const modalResetBtn = document.getElementById('cameraIpResetBtn');
-// === DOM bindings for ESP32 control ===
-const esp32IpInput = document.getElementById('esp32IpInput');
-const esp32ConnectBtn = document.getElementById('esp32ConnectBtn');
-// === Local storage keys and defaults ===
+const $ = (id) => document.getElementById(id);
+
+const feedImg = $('cameraFeed');
+const placeholder = $('cameraPlaceholder');
+const urlInput = $('cameraUrlInput');
+const connectBtn = $('cameraConnectBtn');
+const statusLabel = $('cameraStatus');
+const proxyToggle = $('proxyToggle');
+const esp32IpInput = $('esp32IpInput');
+const esp32ConnectBtn = $('esp32ConnectBtn');
+const btnUp = $('btnUp');
+const btnDown = $('btnDown');
+const btnLeft = $('btnLeft');
+const btnRight = $('btnRight');
+const btnStopCursor = $('btnStopCursor');
+const fireBtn = $('fireBtn');
+const stopLaserBtn = $('stopLaserBtn');
+const scanBtn = $('scanBtn');
+const stopBtn = $('stopBtn');
+const logoutBtn = $('logoutBtn');
+const overlayCanvas = $('cameraOverlay');
+const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+const detectStatus = $('detectStatus');
+const consolePanel = $('console');
+const safetyDot = $('safetyDot');
+const safetyVal = $('safetyVal');
+const modeVal = $('modeVal');
+const profileVal = $('profileVal');
+const targetLabelVal = $('targetLabelVal');
+const targetScoreVal = $('targetScoreVal');
+const targetCenterVal = $('targetCenterVal');
+const targetCenterFilteredVal = $('targetCenterFilteredVal');
+const targetDeltaVal = $('targetDeltaVal');
+const targetDeltaNormVal = $('targetDeltaNormVal');
+const simCommandVal = $('simCommandVal');
+const loopTimeVal = $('loopTimeVal');
+const detectProfileSelect = $('detectProfileSelect');
+const strongThresholdInput = $('strongThresholdInput');
+const possibleThresholdInput = $('possibleThresholdInput');
+const smoothingInput = $('smoothingInput');
+const deadZoneInput = $('deadZoneInput');
+const downloadTelemetryBtn = $('downloadTelemetryBtn');
+const clearTelemetryBtn = $('clearTelemetryBtn');
+
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
 const PROXY_ENABLED_STORAGE_KEY = 'skyshield_camera_proxy_enabled';
-const DEFAULT_BASE_URL = '';
+const DETECTION_SETTINGS_STORAGE_KEY = 'skyshield_detection_settings_v2';
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:3001/proxy?url=';
-// === DOM bindings for control buttons ===
-const btnUp = document.getElementById('btnUp');
-const btnDown = document.getElementById('btnDown');
-const btnLeft = document.getElementById('btnLeft');
-const btnRight = document.getElementById('btnRight');
-const btnStopCursor = document.getElementById('btnStopCursor');
-const fireBtn = document.getElementById('fireBtn');
-const stopLaserBtn = document.getElementById('stopLaserBtn');
-const scanBtn = document.getElementById('scanBtn');
-const stopBtn = document.getElementById('stopBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-// === DOM bindings for detection overlay + status ===
-const overlayCanvas = document.getElementById('cameraOverlay');
-const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
-const detectStatus = document.getElementById('detectStatus');
-const consolePanel = document.getElementById('console');
-const safetyDot = document.getElementById('safetyDot');
-const safetyVal = document.getElementById('safetyVal');
-// === Runtime state ===
+const DETECT_INTERVAL_MS = 180;
+const DRAW_THRESHOLD = 0.05;
+const LOST_LIMIT = 8;
+const MAX_LOG_ROWS = 250;
+const MAX_TELEMETRY = 1200;
+
+const PROFILES = {
+  strict: { id: 'strict', label: 'Strict aircraft', labels: ['airplane', 'aeroplane'] },
+  broad: { id: 'broad', label: 'Broad air-target demo', labels: ['airplane', 'aeroplane', 'bird', 'kite'] },
+};
+
 let streamCandidates = [];
 let streamCandidateIndex = 0;
-let isLaserOn = false;
 let detectTimer = null;
 let detectLoopActive = false;
 let detectModel = null;
 let detectModelReady = false;
 let isDetecting = false;
-let lastDroneState = null;
-let lastDroneLabel = '';
+let isLaserOn = false;
+let frameCounter = 0;
+let lastDetectState = '';
+let lastDetectLabel = '';
+const sessionTelemetry = [];
 
-// === Detection constants ===
-// COCO-SSD does not include a dedicated "drone" class.
-// We treat airplane labels as the closest proxy for drone/aircraft detection.
-const DRONE_LABELS = ['airplane', 'aeroplane'];
-const DETECT_TARGET_INTERVAL_MS = 180;
-const DETECT_SCORE_THRESHOLD = 0.15;
-const DETECT_POSSIBLE_SCORE_THRESHOLD = 0.05;
-const DETECT_DRAW_SCORE_THRESHOLD = 0.05;
+const trackingState = {
+  hasTarget: false,
+  isPossible: false,
+  label: '',
+  score: 0,
+  rawCenterX: 0,
+  rawCenterY: 0,
+  filteredCenterX: 0,
+  filteredCenterY: 0,
+  filteredDeltaX: 0,
+  filteredDeltaY: 0,
+  filteredNormX: 0,
+  filteredNormY: 0,
+  simPan: 0,
+  simTilt: 0,
+  simPanLabel: 'HOLD',
+  simTiltLabel: 'HOLD',
+  loopMs: 0,
+  missedFrames: 0,
+};
 
-// === Send commands to ESP32 controller ===
-function sendCmd(cmd) {
-  // Send a control command directly to the ESP32 over HTTP.
-  const ip = localStorage.getItem(ESP32_STORAGE_KEY);
-  if (!ip) {
-    alert('Set the ESP32 address first.');
-    return Promise.resolve(null);
-  }
-  const target = `${ip}/${cmd}`;
-  return fetch(target)
-    .then((res) => {
-      if (!res.ok) {
-        console.warn(`Command ${cmd} responded with status ${res.status}`);
-      }
-      return res;
-    })
-    .catch((err) => {
-      console.error(`Command ${cmd} failed:`, err);
-      return null;
-    });
+window.SkyShieldTracking = trackingState;
+
+function clamp(value, min, max, fallback) {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
 
-// === Append a message to the console panel ===
+function getProfile(profileId) {
+  return PROFILES[profileId] || PROFILES.strict;
+}
+
 function logConsole(message, variant) {
   if (!consolePanel) return;
-  const entry = document.createElement('div');
-  if (variant) {
-    entry.className = variant;
+  const row = document.createElement('div');
+  if (variant) row.className = variant;
+  row.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  consolePanel.appendChild(row);
+  while (consolePanel.children.length > MAX_LOG_ROWS) {
+    consolePanel.removeChild(consolePanel.firstElementChild);
   }
-  const timestamp = new Date().toLocaleTimeString();
-  entry.textContent = `[${timestamp}] ${message}`;
-  consolePanel.appendChild(entry);
   consolePanel.scrollTop = consolePanel.scrollHeight;
 }
 
-// === Update the detection badge with color/status ===
 function setDetectStatus(text, variant) {
   if (!detectStatus) return;
   detectStatus.textContent = text;
   detectStatus.className = 'badge';
-  const classes = (variant || 'bg-secondary').split(' ');
-  classes.forEach((cls) => detectStatus.classList.add(cls));
+  (variant || 'bg-secondary').split(' ').forEach((cls) => detectStatus.classList.add(cls));
 }
 
-// === Update the safety indicator (dot + text) ===
 function setSafetyState(state, text) {
-  if (!safetyDot || !safetyVal) return;
+  if (!(safetyDot && safetyVal)) return;
   safetyDot.classList.remove('status-ok', 'status-warn', 'status-danger');
-  if (state === 'danger') {
-    safetyDot.classList.add('status-danger');
-    safetyVal.textContent = text || 'Drone detected';
-  } else if (state === 'warn') {
-    safetyDot.classList.add('status-warn');
-    safetyVal.textContent = text || 'Scanning';
-  } else {
-    safetyDot.classList.add('status-ok');
-    safetyVal.textContent = text || 'Safe';
+  const cls = state === 'danger' ? 'status-danger' : state === 'warn' ? 'status-warn' : 'status-ok';
+  safetyDot.classList.add(cls);
+  safetyVal.textContent = text || (state === 'danger' ? 'Air target detected' : state === 'warn' ? 'Scanning' : 'Safe');
+}
+
+function setMode(text) {
+  if (modeVal) modeVal.textContent = text || 'Manual';
+}
+
+function setProfileStatus(profileId) {
+  const profile = getProfile(profileId);
+  if (profileVal) profileVal.textContent = profile.label;
+}
+
+function getSettings() {
+  const profile = getProfile(detectProfileSelect ? detectProfileSelect.value : 'strict');
+  const strongThreshold = clamp(strongThresholdInput && strongThresholdInput.value, 0.05, 0.99, 0.3);
+  const possibleThreshold = clamp(possibleThresholdInput && possibleThresholdInput.value, 0.01, strongThreshold, 0.12);
+  const smoothingAlpha = clamp(smoothingInput && smoothingInput.value, 0.05, 1, 0.35);
+  const deadZone = clamp(deadZoneInput && deadZoneInput.value, 0, 0.5, 0.08);
+  return { profile, strongThreshold, possibleThreshold, smoothingAlpha, deadZone };
+}
+
+function saveSettings() {
+  const settings = getSettings();
+  localStorage.setItem(DETECTION_SETTINGS_STORAGE_KEY, JSON.stringify({
+    profileId: settings.profile.id,
+    strongThreshold: settings.strongThreshold,
+    possibleThreshold: settings.possibleThreshold,
+    smoothingAlpha: settings.smoothingAlpha,
+    deadZone: settings.deadZone,
+  }));
+  setProfileStatus(settings.profile.id);
+}
+
+function loadSettings() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(DETECTION_SETTINGS_STORAGE_KEY) || 'null');
+  } catch (err) {
+    console.warn('Failed to parse saved detection settings.', err);
   }
+  const profile = getProfile(saved && saved.profileId);
+  if (detectProfileSelect) detectProfileSelect.value = profile.id;
+  if (strongThresholdInput) strongThresholdInput.value = String(clamp(saved && saved.strongThreshold, 0.05, 0.99, 0.3));
+  if (possibleThresholdInput) possibleThresholdInput.value = String(clamp(saved && saved.possibleThreshold, 0.01, 0.95, 0.12));
+  if (smoothingInput) smoothingInput.value = String(clamp(saved && saved.smoothingAlpha, 0.05, 1, 0.35));
+  if (deadZoneInput) deadZoneInput.value = String(clamp(saved && saved.deadZone, 0, 0.5, 0.08));
+  setProfileStatus(profile.id);
 }
 
-// === Keep overlay canvas sized to the camera container ===
-function syncOverlaySize() {
-  if (!overlayCanvas || !feedImg) return;
-  const container = feedImg.parentElement;
-  if (!container) return;
-  const width = container.clientWidth;
-  const height = container.clientHeight;
-  if (!width || !height) return;
-  overlayCanvas.width = Math.round(width);
-  overlayCanvas.height = Math.round(height);
+function setReadout(el, text) {
+  if (el) el.textContent = text;
 }
 
-// === Clear all drawings from the overlay canvas ===
-function clearOverlay() {
-  if (!overlayCtx || !overlayCanvas) return;
-  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+function formatPoint(x, y) {
+  return `${x.toFixed(0)}, ${y.toFixed(0)}`;
 }
 
-// === Compute how the image fits inside the container ===
-function getImageFit() {
-  if (!feedImg) return null;
-  const container = feedImg.parentElement;
-  if (!container) return null;
-  const naturalWidth = feedImg.naturalWidth;
-  const naturalHeight = feedImg.naturalHeight;
-  if (!naturalWidth || !naturalHeight) return null;
-  const containerWidth = container.clientWidth;
-  const containerHeight = container.clientHeight;
-  if (!containerWidth || !containerHeight) return null;
-  const objectFit = window.getComputedStyle(feedImg).objectFit || 'contain';
-  const scale =
-    objectFit === 'cover'
-      ? Math.max(containerWidth / naturalWidth, containerHeight / naturalHeight)
-      : Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
-  const displayWidth = naturalWidth * scale;
-  const displayHeight = naturalHeight * scale;
-  const offsetX = (containerWidth - displayWidth) / 2;
-  const offsetY = (containerHeight - displayHeight) / 2;
-  return { scale, offsetX, offsetY };
+function formatNorm(x, y) {
+  return `${x.toFixed(2)}, ${y.toFixed(2)}`;
 }
 
-// === Draw bounding boxes and labels for detections ===
-function drawDetections(detections) {
-  if (!overlayCtx || !overlayCanvas) return;
-  syncOverlaySize();
-  clearOverlay();
-  if (!detections.length) return;
-  const fit = getImageFit();
-  if (!fit) return;
-  const { scale, offsetX, offsetY } = fit;
-  overlayCtx.lineWidth = 2;
-  overlayCtx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
-  overlayCtx.textBaseline = 'top';
-  detections.forEach((det) => {
-    const score = det.score || 0;
-    const isTarget = !!det.isTarget;
-    const isPossible = !!det.isPossible;
-    const [rawX, rawY, rawW, rawH] = det.bbox;
-    const x = rawX * scale + offsetX;
-    const y = rawY * scale + offsetY;
-    const w = rawW * scale;
-    const h = rawH * scale;
-    if (w <= 0 || h <= 0) return;
-    overlayCtx.strokeStyle = isTarget ? '#ff4d4d' : '#22c55e';
-    overlayCtx.setLineDash(isTarget ? [] : [4, 3]);
-    overlayCtx.strokeRect(x, y, w, h);
-    const prefix = isTarget ? 'TARGET ' : isPossible ? 'POSSIBLE ' : '';
-    const label = `${prefix}${det.class} ${(score * 100).toFixed(1)}%`;
-    const textWidth = overlayCtx.measureText(label).width + 8;
-    overlayCtx.fillStyle = isTarget ? 'rgba(120, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.65)';
-    overlayCtx.fillRect(x, Math.max(0, y - 16), textWidth, 16);
-    overlayCtx.fillStyle = '#f8fafc';
-    overlayCtx.fillText(label, x + 4, Math.max(0, y - 15));
-    overlayCtx.setLineDash([]);
+function clearTargetTelemetry() {
+  setReadout(targetLabelVal, 'n/a');
+  setReadout(targetScoreVal, 'n/a');
+  setReadout(targetCenterVal, 'n/a');
+  setReadout(targetCenterFilteredVal, 'n/a');
+  setReadout(targetDeltaVal, 'n/a');
+  setReadout(targetDeltaNormVal, 'n/a');
+  setReadout(simCommandVal, 'HOLD / HOLD');
+  setReadout(loopTimeVal, 'n/a');
+  Object.assign(trackingState, {
+    hasTarget: false,
+    isPossible: false,
+    label: '',
+    score: 0,
+    rawCenterX: 0,
+    rawCenterY: 0,
+    filteredCenterX: 0,
+    filteredCenterY: 0,
+    filteredDeltaX: 0,
+    filteredDeltaY: 0,
+    filteredNormX: 0,
+    filteredNormY: 0,
+    simPan: 0,
+    simTilt: 0,
+    simPanLabel: 'HOLD',
+    simTiltLabel: 'HOLD',
+    loopMs: 0,
   });
 }
 
-// === Load the COCO-SSD model once and reuse it ===
-async function ensureDetectModel() {
-  if (detectModelReady && detectModel) {
-    return detectModel;
+function syncOverlaySize() {
+  if (!(overlayCanvas && feedImg && feedImg.parentElement)) return;
+  overlayCanvas.width = Math.round(feedImg.parentElement.clientWidth || 0);
+  overlayCanvas.height = Math.round(feedImg.parentElement.clientHeight || 0);
+}
+
+function clearOverlay() {
+  if (overlayCtx && overlayCanvas) {
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   }
+}
+
+function getImageFit() {
+  if (!(feedImg && feedImg.parentElement && feedImg.naturalWidth && feedImg.naturalHeight)) return null;
+  const width = feedImg.parentElement.clientWidth;
+  const height = feedImg.parentElement.clientHeight;
+  const scale = Math.min(width / feedImg.naturalWidth, height / feedImg.naturalHeight);
+  const displayWidth = feedImg.naturalWidth * scale;
+  const displayHeight = feedImg.naturalHeight * scale;
+  return { scale, offsetX: (width - displayWidth) / 2, offsetY: (height - displayHeight) / 2 };
+}
+
+function computeMetrics(det) {
+  syncOverlaySize();
+  const fit = getImageFit();
+  if (!fit) return null;
+  const [rawX, rawY, rawW, rawH] = det.bbox;
+  const x = rawX * fit.scale + fit.offsetX;
+  const y = rawY * fit.scale + fit.offsetY;
+  const w = rawW * fit.scale;
+  const h = rawH * fit.scale;
+  if (w <= 0 || h <= 0) return null;
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+  const screenCenterX = overlayCanvas.width / 2;
+  const screenCenterY = overlayCanvas.height / 2;
+  const deltaX = centerX - screenCenterX;
+  const deltaY = screenCenterY - centerY;
+  const normX = screenCenterX ? Math.max(-1, Math.min(1, deltaX / screenCenterX)) : 0;
+  const normY = screenCenterY ? Math.max(-1, Math.min(1, deltaY / screenCenterY)) : 0;
+  return { x, y, w, h, centerX, centerY, deltaX, deltaY, normX, normY };
+}
+
+function chooseCandidate(candidates) {
+  if (!candidates.length) return null;
+  return candidates.reduce((best, det) => {
+    let detRank = det.score || 0;
+    let bestRank = best.score || 0;
+    if (trackingState.hasTarget && trackingState.missedFrames < LOST_LIMIT) {
+      const diag = Math.max(1, Math.hypot(overlayCanvas.width, overlayCanvas.height));
+      detRank -= Math.hypot(det.metrics.centerX - trackingState.filteredCenterX, det.metrics.centerY - trackingState.filteredCenterY) / diag * 0.35;
+      bestRank -= Math.hypot(best.metrics.centerX - trackingState.filteredCenterX, best.metrics.centerY - trackingState.filteredCenterY) / diag * 0.35;
+    }
+    return detRank > bestRank ? det : best;
+  });
+}
+
+function smoothMetrics(raw, settings) {
+  if (!trackingState.hasTarget || trackingState.missedFrames >= LOST_LIMIT) {
+    return { centerX: raw.centerX, centerY: raw.centerY, deltaX: raw.deltaX, deltaY: raw.deltaY, normX: raw.normX, normY: raw.normY };
+  }
+  const a = settings.smoothingAlpha;
+  const centerX = trackingState.filteredCenterX + a * (raw.centerX - trackingState.filteredCenterX);
+  const centerY = trackingState.filteredCenterY + a * (raw.centerY - trackingState.filteredCenterY);
+  const dx = centerX - overlayCanvas.width / 2;
+  const dy = overlayCanvas.height / 2 - centerY;
+  const normX = overlayCanvas.width ? Math.max(-1, Math.min(1, dx / (overlayCanvas.width / 2))) : 0;
+  const normY = overlayCanvas.height ? Math.max(-1, Math.min(1, dy / (overlayCanvas.height / 2))) : 0;
+  return { centerX, centerY, deltaX: dx, deltaY: dy, normX, normY };
+}
+
+function simAxis(norm, deadZone, negLabel, posLabel) {
+  const mag = Math.abs(norm);
+  if (mag < deadZone) return { value: 0, label: 'HOLD' };
+  const step = mag >= 0.45 ? 1 : mag >= 0.22 ? 0.5 : 0.25;
+  const suffix = mag >= 0.45 ? 'LARGE' : mag >= 0.22 ? 'MED' : 'SMALL';
+  return { value: norm < 0 ? -step : step, label: `${norm < 0 ? negLabel : posLabel}_${suffix}` };
+}
+
+function simCommand(filtered, settings) {
+  const pan = simAxis(filtered.normX, settings.deadZone, 'LEFT', 'RIGHT');
+  const tilt = simAxis(filtered.normY, settings.deadZone, 'DOWN', 'UP');
+  return { pan: pan.value, tilt: tilt.value, panLabel: pan.label, tiltLabel: tilt.label };
+}
+
+function drawReticle() {
+  if (!(overlayCtx && overlayCanvas)) return;
+  const cx = overlayCanvas.width / 2;
+  const cy = overlayCanvas.height / 2;
+  overlayCtx.save();
+  overlayCtx.strokeStyle = 'rgba(56,189,248,0.9)';
+  overlayCtx.lineWidth = 1.2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(cx - 22, cy);
+  overlayCtx.lineTo(cx + 22, cy);
+  overlayCtx.moveTo(cx, cy - 22);
+  overlayCtx.lineTo(cx, cy + 22);
+  overlayCtx.stroke();
+  overlayCtx.setLineDash([4, 4]);
+  overlayCtx.beginPath();
+  overlayCtx.arc(cx, cy, 30, 0, Math.PI * 2);
+  overlayCtx.stroke();
+  overlayCtx.restore();
+}
+
+function drawScene(detections, selected) {
+  if (!(overlayCtx && overlayCanvas)) return;
+  syncOverlaySize();
+  clearOverlay();
+  drawReticle();
+  overlayCtx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
+  overlayCtx.textBaseline = 'top';
+  detections.forEach((det) => {
+    if (!det.metrics) return;
+    const isSelected = det === selected;
+    const stroke = isSelected ? '#38bdf8' : det.isStrong ? '#ff4d4d' : det.isCandidate ? '#f59e0b' : '#22c55e';
+    overlayCtx.save();
+    overlayCtx.strokeStyle = stroke;
+    overlayCtx.lineWidth = isSelected ? 3 : 2;
+    overlayCtx.setLineDash(det.isCandidate && !det.isStrong && !isSelected ? [5, 3] : []);
+    overlayCtx.strokeRect(det.metrics.x, det.metrics.y, det.metrics.w, det.metrics.h);
+    const prefix = isSelected ? 'TRACK ' : det.isStrong ? 'TARGET ' : det.isCandidate ? 'POSSIBLE ' : '';
+    const label = `${prefix}${det.class} ${((det.score || 0) * 100).toFixed(1)}%`;
+    const width = overlayCtx.measureText(label).width + 8;
+    overlayCtx.fillStyle = 'rgba(0,0,0,0.7)';
+    overlayCtx.fillRect(det.metrics.x, Math.max(0, det.metrics.y - 16), width, 16);
+    overlayCtx.fillStyle = '#f8fafc';
+    overlayCtx.fillText(label, det.metrics.x + 4, Math.max(0, det.metrics.y - 15));
+    overlayCtx.restore();
+  });
+  if (trackingState.hasTarget) {
+    const cx = overlayCanvas.width / 2;
+    const cy = overlayCanvas.height / 2;
+    overlayCtx.save();
+    overlayCtx.strokeStyle = trackingState.isPossible ? '#f59e0b' : '#38bdf8';
+    overlayCtx.lineWidth = 2;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(cx, cy);
+    overlayCtx.lineTo(trackingState.filteredCenterX, trackingState.filteredCenterY);
+    overlayCtx.stroke();
+    overlayCtx.fillStyle = '#f97316';
+    overlayCtx.beginPath();
+    overlayCtx.arc(trackingState.rawCenterX, trackingState.rawCenterY, 4, 0, Math.PI * 2);
+    overlayCtx.fill();
+    overlayCtx.fillStyle = trackingState.isPossible ? '#f59e0b' : '#38bdf8';
+    overlayCtx.beginPath();
+    overlayCtx.arc(trackingState.filteredCenterX, trackingState.filteredCenterY, 5, 0, Math.PI * 2);
+    overlayCtx.fill();
+    const text = `SIM ${trackingState.simPanLabel} / ${trackingState.simTiltLabel}`;
+    overlayCtx.fillStyle = 'rgba(0,0,0,0.7)';
+    overlayCtx.fillRect(10, 10, overlayCtx.measureText(text).width + 12, 18);
+    overlayCtx.fillStyle = '#f8fafc';
+    overlayCtx.fillText(text, 16, 12);
+    overlayCtx.restore();
+  }
+}
+
+function updateSelectedTarget(selected, settings, loopMs) {
+  const filtered = smoothMetrics(selected.metrics, settings);
+  const sim = simCommand(filtered, settings);
+  trackingState.hasTarget = true;
+  trackingState.isPossible = !selected.isStrong;
+  trackingState.label = selected.class;
+  trackingState.score = selected.score || 0;
+  trackingState.rawCenterX = selected.metrics.centerX;
+  trackingState.rawCenterY = selected.metrics.centerY;
+  trackingState.filteredCenterX = filtered.centerX;
+  trackingState.filteredCenterY = filtered.centerY;
+  trackingState.filteredDeltaX = filtered.deltaX;
+  trackingState.filteredDeltaY = filtered.deltaY;
+  trackingState.filteredNormX = filtered.normX;
+  trackingState.filteredNormY = filtered.normY;
+  trackingState.simPan = sim.pan;
+  trackingState.simTilt = sim.tilt;
+  trackingState.simPanLabel = sim.panLabel;
+  trackingState.simTiltLabel = sim.tiltLabel;
+  trackingState.loopMs = loopMs;
+  trackingState.missedFrames = 0;
+  setReadout(targetLabelVal, selected.isStrong ? selected.class : `Possible ${selected.class}`);
+  setReadout(targetScoreVal, `${((selected.score || 0) * 100).toFixed(1)}%`);
+  setReadout(targetCenterVal, formatPoint(selected.metrics.centerX, selected.metrics.centerY));
+  setReadout(targetCenterFilteredVal, formatPoint(filtered.centerX, filtered.centerY));
+  setReadout(targetDeltaVal, formatPoint(filtered.deltaX, filtered.deltaY));
+  setReadout(targetDeltaNormVal, formatNorm(filtered.normX, filtered.normY));
+  setReadout(simCommandVal, `${sim.panLabel} (${sim.pan.toFixed(2)}) / ${sim.tiltLabel} (${sim.tilt.toFixed(2)})`);
+  setReadout(loopTimeVal, loopMs.toFixed(1));
+}
+
+function pushTelemetry(entry) {
+  sessionTelemetry.push(entry);
+  while (sessionTelemetry.length > MAX_TELEMETRY) sessionTelemetry.shift();
+}
+
+async function ensureDetectModel() {
+  if (detectModelReady && detectModel) return detectModel;
   if (!window.cocoSsd) {
     setDetectStatus('Detect: model missing', 'bg-danger');
     logConsole('COCO-SSD model missing.', 'text-danger');
@@ -220,50 +434,148 @@ async function ensureDetectModel() {
   }
 }
 
-// === Start periodic detection loop ===
-function startDetectionLoop() {
-  if (detectLoopActive || !feedImg) return;
-  detectLoopActive = true;
-  setDetectStatus('Detect: starting', 'bg-warning');
+async function runDetection() {
+  if (isDetecting || !feedImg || !feedImg.src || feedImg.classList.contains('d-none')) return;
+  if (!feedImg.complete || feedImg.naturalWidth === 0) return;
+  isDetecting = true;
+  const startedAt = performance.now();
+  try {
+    const settings = getSettings();
+    setProfileStatus(settings.profile.id);
+    const model = await ensureDetectModel();
+    if (!model) return;
+    const labels = new Set(settings.profile.labels);
+    const predictions = await model.detect(feedImg);
+    const detections = predictions.filter((p) => (p.score || 0) >= DRAW_THRESHOLD).map((p) => ({
+      ...p,
+      metrics: computeMetrics(p),
+      isCandidate: labels.has(p.class) && (p.score || 0) >= settings.possibleThreshold,
+      isStrong: labels.has(p.class) && (p.score || 0) >= settings.strongThreshold,
+    }));
+    const selected = chooseCandidate(detections.filter((det) => det.isCandidate && det.metrics));
+    const loopMs = performance.now() - startedAt;
+    if (!selected) {
+      trackingState.missedFrames += 1;
+      drawScene(detections, null);
+      if (trackingState.missedFrames >= LOST_LIMIT) clearTargetTelemetry();
+      setReadout(loopTimeVal, loopMs.toFixed(1));
+      setDetectStatus(predictions.length ? `Detect: clear (${predictions.reduce((a, b) => (a.score || 0) > (b.score || 0) ? a : b).class})` : 'Detect: clear', 'bg-success');
+      setSafetyState('ok', 'Safe');
+      setMode('Observe');
+      if (lastDetectState !== 'clear') logConsole('No configured air target detected.', 'text-success');
+      lastDetectState = 'clear';
+      lastDetectLabel = '';
+      pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: 'clear', profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), predictionCount: predictions.length });
+      return;
+    }
+    updateSelectedTarget(selected, settings, loopMs);
+    drawScene(detections, selected);
+    const labelText = `${selected.class} ${((selected.score || 0) * 100).toFixed(1)}%`;
+    const deltaText = ` dx=${trackingState.filteredDeltaX.toFixed(0)} dy=${trackingState.filteredDeltaY.toFixed(0)}`;
+    if (selected.isStrong) {
+      setDetectStatus('Detect: target', 'bg-danger');
+      setSafetyState('danger', 'Air target detected');
+      if (lastDetectState !== 'target' || lastDetectLabel !== labelText) logConsole(`Target detected: ${labelText}${deltaText}`, 'text-danger');
+      lastDetectState = 'target';
+    } else {
+      setDetectStatus('Detect: possible', 'bg-warning text-dark');
+      setSafetyState('warn', 'Possible air target');
+      if (lastDetectState !== 'possible' || lastDetectLabel !== labelText) logConsole(`Possible target: ${labelText}${deltaText}`, 'text-warning');
+      lastDetectState = 'possible';
+    }
+    lastDetectLabel = labelText;
+    pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: selected.isStrong ? 'target' : 'possible', profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), label: selected.class, score: Number((selected.score || 0).toFixed(4)), rawCenter: { x: Number(trackingState.rawCenterX.toFixed(2)), y: Number(trackingState.rawCenterY.toFixed(2)) }, filteredCenter: { x: Number(trackingState.filteredCenterX.toFixed(2)), y: Number(trackingState.filteredCenterY.toFixed(2)) }, filteredDelta: { x: Number(trackingState.filteredDeltaX.toFixed(2)), y: Number(trackingState.filteredDeltaY.toFixed(2)), normX: Number(trackingState.filteredNormX.toFixed(4)), normY: Number(trackingState.filteredNormY.toFixed(4)) }, sim: { pan: trackingState.simPan, tilt: trackingState.simTilt, panLabel: trackingState.simPanLabel, tiltLabel: trackingState.simTiltLabel } });
+  } catch (err) {
+    console.error('Detection failed', err);
+    const text = err && err.message ? err.message : 'check CORS / proxy / stream';
+    const corsBlocked = /tainted canvases|cross-origin|cross origin/i.test(text);
+    setDetectStatus(corsBlocked ? 'Detect: blocked (CORS / proxy)' : 'Detect: error', corsBlocked ? 'bg-warning text-dark' : 'bg-danger');
+    setSafetyState('warn', corsBlocked ? 'Detection blocked' : 'Scanning');
+    clearTargetTelemetry();
+    if (lastDetectState !== 'error' || lastDetectLabel !== text) logConsole(`Detection error: ${text}`, 'text-warning');
+    lastDetectState = 'error';
+    lastDetectLabel = text;
+    pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: 'error', error: text });
+  } finally {
+    isDetecting = false;
+  }
+}
+
+function normalizeBaseUrl(raw) {
+  let url = (raw || '').trim();
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+  return url.replace(/\/+$/, '');
+}
+
+function isProxyEnabled() {
+  return proxyToggle ? proxyToggle.checked : localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
+}
+
+function buildStreamRequestUrl(url) {
+  return isProxyEnabled() ? DEFAULT_PROXY_URL + encodeURIComponent(url) : url;
+}
+
+function buildStreamCandidates(normalized) {
+  try {
+    const u = new URL(normalized);
+    if (u.pathname && u.pathname !== '/') return [...new Set([normalized, u.origin + '/stream', u.origin])];
+    return [normalized + '/stream', normalized];
+  } catch (err) {
+    console.error('Invalid camera URL', err);
+    return [];
+  }
+}
+
+function configureFeedCorsMode() {
+  if (feedImg) feedImg.crossOrigin = 'anonymous';
+}
+
+function setStream(baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (!normalized) {
+    streamCandidates = [];
+    streamCandidateIndex = 0;
+    if (feedImg) {
+      feedImg.src = '';
+      feedImg.classList.add('d-none');
+    }
+    if (placeholder) placeholder.classList.remove('d-none');
+    setReadout(statusLabel, 'Stream idle');
+    localStorage.removeItem(STORAGE_KEY);
+    stopDetectionLoop('idle');
+    clearTargetTelemetry();
+    setMode('Manual');
+    return '';
+  }
+  configureFeedCorsMode();
+  streamCandidates = buildStreamCandidates(normalized).map((directUrl) => ({ directUrl, requestUrl: buildStreamRequestUrl(directUrl) }));
+  streamCandidateIndex = 0;
+  const first = streamCandidates[0];
+  if (!first) return '';
+  feedImg.src = first.requestUrl;
+  feedImg.classList.remove('d-none');
+  if (placeholder) placeholder.classList.add('d-none');
+  setReadout(statusLabel, `Streaming from ${first.directUrl}${isProxyEnabled() ? ' (via proxy)' : ''}`);
+  setDetectStatus('Detect: waiting', 'bg-secondary');
   setSafetyState('warn', 'Scanning');
-  logConsole('Detection loop started.', 'text-info');
-  if (overlayCanvas) {
-    overlayCanvas.classList.remove('d-none');
-  }
-  scheduleNextDetection(0);
+  setMode('Observe');
+  logConsole(`Attempting camera stream: ${first.directUrl}`, 'text-muted');
+  localStorage.setItem(STORAGE_KEY, normalized);
+  return normalized;
 }
 
-// === Schedule the next detection pass ===
-function scheduleNextDetection(delayMs) {
-  if (!detectLoopActive) return;
-  if (detectTimer) {
-    clearTimeout(detectTimer);
-    detectTimer = null;
-  }
-  detectTimer = setTimeout(async () => {
-    detectTimer = null;
-    const startedAt = performance.now();
-    await runDetection();
-    const elapsed = performance.now() - startedAt;
-    const nextDelay = Math.max(0, DETECT_TARGET_INTERVAL_MS - elapsed);
-    scheduleNextDetection(nextDelay);
-  }, Math.max(0, delayMs || 0));
-}
-
-// === Stop detection loop and reset UI ===
 function stopDetectionLoop(reason) {
   detectLoopActive = false;
-  if (detectTimer) {
-    clearTimeout(detectTimer);
-    detectTimer = null;
-  }
+  if (detectTimer) clearTimeout(detectTimer);
+  detectTimer = null;
   isDetecting = false;
   clearOverlay();
-  if (overlayCanvas) {
-    overlayCanvas.classList.add('d-none');
-  }
-  lastDroneState = null;
-  lastDroneLabel = '';
+  if (overlayCanvas) overlayCanvas.classList.add('d-none');
+  lastDetectState = '';
+  lastDetectLabel = '';
+  clearTargetTelemetry();
+  setMode('Manual');
   if (reason === 'idle') {
     setDetectStatus('Detect idle', 'bg-secondary');
     setSafetyState('ok', 'Safe');
@@ -272,502 +584,161 @@ function stopDetectionLoop(reason) {
   }
 }
 
-// === Run a single detection pass ===
-async function runDetection() {
-  if (isDetecting || !feedImg) return;
-  if (!feedImg.src || feedImg.classList.contains('d-none')) return;
-  if (!feedImg.complete || feedImg.naturalWidth === 0) return;
-  isDetecting = true;
-  try {
-    const model = await ensureDetectModel();
-    if (!model) return;
-    const predictions = await model.detect(feedImg);
-    const strongDroneDetections = predictions.filter(
-      (p) =>
-        DRONE_LABELS.includes(p.class) &&
-        (p.score || 0) >= DETECT_SCORE_THRESHOLD
-    );
-    const possibleDroneDetections = predictions.filter(
-      (p) =>
-        DRONE_LABELS.includes(p.class) &&
-        (p.score || 0) >= DETECT_POSSIBLE_SCORE_THRESHOLD
-    );
-    const drawDetectionsList = predictions
-      .filter((p) => (p.score || 0) >= DETECT_DRAW_SCORE_THRESHOLD)
-      .map((p) => {
-        const score = p.score || 0;
-        const isTargetLabel = DRONE_LABELS.includes(p.class);
-        return {
-          ...p,
-          isTarget: isTargetLabel && score >= DETECT_SCORE_THRESHOLD,
-          isPossible: isTargetLabel && score >= DETECT_POSSIBLE_SCORE_THRESHOLD,
-        };
-      });
-    drawDetections(drawDetectionsList);
+function scheduleNextDetection(delay) {
+  if (!detectLoopActive) return;
+  if (detectTimer) clearTimeout(detectTimer);
+  detectTimer = setTimeout(async () => {
+    const startedAt = performance.now();
+    await runDetection();
+    scheduleNextDetection(Math.max(0, DETECT_INTERVAL_MS - (performance.now() - startedAt)));
+  }, Math.max(0, delay || 0));
+}
 
-    if (strongDroneDetections.length) {
-      const best = strongDroneDetections.reduce((a, b) =>
-        (a.score || 0) > (b.score || 0) ? a : b
-      );
-      const scoreText = ((best.score || 0) * 100).toFixed(1);
-      const labelText = `${best.class} ${scoreText}%`;
-      setDetectStatus('Detect: drone', 'bg-danger');
-      setSafetyState('danger', 'Drone detected');
-      if (lastDroneState !== 'drone' || lastDroneLabel !== labelText) {
-        logConsole(`Target detected: ${labelText}`, 'text-danger');
-      }
-      lastDroneState = 'drone';
-      lastDroneLabel = labelText;
-    } else if (possibleDroneDetections.length) {
-      const best = possibleDroneDetections.reduce((a, b) =>
-        (a.score || 0) > (b.score || 0) ? a : b
-      );
-      const scoreText = ((best.score || 0) * 100).toFixed(1);
-      const labelText = `${best.class} ${scoreText}%`;
-      setDetectStatus('Detect: possible', 'bg-warning text-dark');
-      setSafetyState('warn', 'Possible drone');
-      if (lastDroneState !== 'possible' || lastDroneLabel !== labelText) {
-        logConsole(`Possible target: ${labelText}`, 'text-warning');
-      }
-      lastDroneState = 'possible';
-      lastDroneLabel = labelText;
-    } else {
-      let clearLabel = 'Detect: clear';
-      if (predictions.length) {
-        const top = predictions.reduce((a, b) => ((a.score || 0) > (b.score || 0) ? a : b));
-        clearLabel = `Detect: clear (${top.class})`;
-      }
-      setDetectStatus(clearLabel, 'bg-success');
-      setSafetyState('ok', 'Safe');
-      if (lastDroneState !== 'clear') {
-        logConsole('No target detected.', 'text-success');
-      }
-      lastDroneState = 'clear';
-      lastDroneLabel = '';
-    }
-  } catch (err) {
-    console.error('Detection failed', err);
-    setDetectStatus('Detect: error', 'bg-danger');
-    setSafetyState('warn', 'Scanning');
-    const errorText =
-      (err && typeof err.message === 'string' && err.message.trim()) ||
-      'check CORS/proxy/stream';
-    if (lastDroneState !== 'error' || lastDroneLabel !== errorText) {
-      logConsole(`Detection error: ${errorText}`, 'text-warning');
-    }
-    lastDroneState = 'error';
-    lastDroneLabel = errorText;
-  } finally {
-    isDetecting = false;
+function startDetectionLoop() {
+  if (detectLoopActive || !feedImg) return;
+  detectLoopActive = true;
+  setDetectStatus('Detect: starting', 'bg-warning');
+  setSafetyState('warn', 'Scanning');
+  setMode('Observe');
+  logConsole('Detection loop started.', 'text-info');
+  if (overlayCanvas) overlayCanvas.classList.remove('d-none');
+  scheduleNextDetection(0);
+}
+
+function sendCmd(cmd) {
+  const ip = localStorage.getItem(ESP32_STORAGE_KEY);
+  if (!ip) {
+    alert('Set the ESP32 address first.');
+    return Promise.resolve(null);
   }
+  return fetch(`${ip}/${cmd}`).catch((err) => {
+    console.error(`Command ${cmd} failed:`, err);
+    return null;
+  });
 }
 
-// === Normalize a user-provided URL ===
-function normalizeBaseUrl(raw) {
-  // Clean and standardize a user-provided base URL.
-  let url = raw.trim();
-  if (!url) return '';
-  if (!/^https?:\/\//i.test(url)) {
-    url = 'http://' + url;
-  }
-  return url.replace(/\/+$/, '');
-}
-
-// === Read proxy enabled state from UI/local storage ===
-function isProxyEnabled() {
-  if (proxyToggle) return proxyToggle.checked;
-  return localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
-}
-
-// === Convert camera URL into proxied URL when enabled ===
-function buildStreamRequestUrl(targetUrl) {
-  if (!isProxyEnabled()) return targetUrl;
-  return DEFAULT_PROXY_URL + encodeURIComponent(targetUrl);
-}
-
-// === Persist proxy settings from controls ===
-function saveProxySettings() {
-  const enabled = isProxyEnabled() ? '1' : '0';
-  localStorage.setItem(PROXY_ENABLED_STORAGE_KEY, enabled);
-}
-
-// === Configure image CORS mode based on proxy usage ===
-function configureFeedCorsMode() {
-  if (!feedImg) return;
-  if (isProxyEnabled()) {
-    feedImg.setAttribute('crossorigin', 'anonymous');
-  } else {
-    feedImg.removeAttribute('crossorigin');
-  }
-}
-
-// === Build a list of possible stream endpoints ===
-function buildStreamCandidates(normalized) {
-  // Generate possible stream URLs based on a base address.
-  try {
-    const u = new URL(normalized);
-    const hasCustomPath = u.pathname && u.pathname !== '/';
-    const candidates = [];
-    if (hasCustomPath) {
-      candidates.push(normalized);
-      const origin = u.origin;
-      if (u.pathname.toLowerCase() !== '/stream') {
-        candidates.push(origin + '/stream');
-      }
-      if (!u.port) {
-        candidates.push(`${u.protocol}//${u.hostname}:81/stream`);
-      }
-      candidates.push(origin);
-    } else {
-      const base = normalized;
-      candidates.push(base + '/stream'); // common default
-      if (!u.port) {
-        candidates.push(base + ':81/stream'); // typical AI Thinker port
-      }
-      candidates.push(base); // root fallback
-    }
-    return [...new Set(candidates)];
-  } catch (err) {
-    console.error('Invalid URL for stream candidates', err);
-    return [];
-  }
-}
-
-// === Save and apply ESP32 IP address ===
-function applyEsp32Ip(rawValue) {
-  // Normalize and persist the ESP32 IP locally.
-  const normalized = normalizeBaseUrl(rawValue);
-  if (!normalized) return '';
-  if (esp32IpInput) {
-    esp32IpInput.value = normalized;
-  }
-  localStorage.setItem(ESP32_STORAGE_KEY, normalized);
-  return normalized;
-}
-
-// === Sync laser state from controller status endpoint ===
 async function syncLaserState() {
   const res = await sendCmd('status');
   if (!res || !res.ok) return;
   const text = await res.text();
   const match = text.match(/laser=(\d)/i);
-  if (!match) return;
-  isLaserOn = match[1] === '1';
+  if (match) isLaserOn = match[1] === '1';
 }
 
-// === Configure camera stream and update UI ===
-function setStream(baseUrl) {
-  // Configure the camera stream URL and update UI/storage.
-  const normalized = normalizeBaseUrl(baseUrl);
-  if (!normalized) {
-    streamCandidates = [];
-    streamCandidateIndex = 0;
-    feedImg.src = '';
-    feedImg.classList.add('d-none');
-    placeholder.classList.remove('d-none');
-    statusLabel.textContent = 'Stream idle';
-    localStorage.removeItem(STORAGE_KEY);
-    stopDetectionLoop('idle');
-    return '';
-  }
-
-  const directCandidates = buildStreamCandidates(normalized);
-  configureFeedCorsMode();
-  streamCandidates = directCandidates.map((directUrl) => ({
-    directUrl,
-    requestUrl: buildStreamRequestUrl(directUrl),
-  }));
-  streamCandidateIndex = 0;
-  const firstCandidate = streamCandidates[streamCandidateIndex] || null;
-  if (!firstCandidate) {
-    statusLabel.textContent = 'Stream error - invalid URL';
-    return '';
-  }
-
-  feedImg.src = firstCandidate.requestUrl;
-  feedImg.classList.remove('d-none');
-  placeholder.classList.add('d-none');
-  const suffix = isProxyEnabled() ? ' (via proxy)' : '';
-  statusLabel.textContent = 'Streaming from ' + firstCandidate.directUrl + suffix;
-  logConsole('Attempting camera stream: ' + firstCandidate.directUrl, 'text-muted');
-  setDetectStatus('Detect: waiting', 'bg-secondary');
-  setSafetyState('warn', 'Scanning');
-  localStorage.setItem(STORAGE_KEY, normalized);
-  return normalized;
+function downloadTelemetry() {
+  if (!sessionTelemetry.length) return logConsole('No telemetry to download yet.', 'text-warning');
+  const blob = new Blob([JSON.stringify(sessionTelemetry, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `skyshield-telemetry-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-// === Apply base URL input to stream ===
-function updateBaseFromInput(rawValue) {
-  // Apply a camera URL from user input.
-  const normalized = setStream(rawValue);
-  if (normalized && urlInput) {
-    urlInput.value = normalized;
+function init() {
+  clearTargetTelemetry();
+  loadSettings();
+  if (proxyToggle) {
+    proxyToggle.checked = localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
+    proxyToggle.addEventListener('change', () => {
+      localStorage.setItem(PROXY_ENABLED_STORAGE_KEY, proxyToggle.checked ? '1' : '0');
+      if (urlInput && urlInput.value.trim()) setStream(urlInput.value.trim());
+    });
   }
-  return normalized;
-}
-
-// === Wire camera URL input + button ===
-if (connectBtn && urlInput) {
-  const saveCameraUrl = () => {
-    const normalized = updateBaseFromInput(urlInput.value);
-    if (!normalized) {
-      alert('Enter a valid camera URL (e.g., http://10.0.0.12:81/stream)');
-    }
-  };
-
-  connectBtn.addEventListener('click', saveCameraUrl);
-
-  urlInput.addEventListener('keyup', (event) => {
-    if (event.key === 'Enter') {
-      saveCameraUrl();
-    }
+  [detectProfileSelect, strongThresholdInput, possibleThresholdInput, smoothingInput, deadZoneInput].filter(Boolean).forEach((el) => {
+    el.addEventListener('change', () => {
+      saveSettings();
+      const s = getSettings();
+      logConsole(`Detection settings updated: ${s.profile.label}, strong=${s.strongThreshold.toFixed(2)}, possible=${s.possibleThreshold.toFixed(2)}, alpha=${s.smoothingAlpha.toFixed(2)}, deadZone=${s.deadZone.toFixed(2)}`, 'text-info');
+    });
   });
-}
-
-// === Wire proxy settings controls ===
-if (proxyToggle) {
-  const applyProxySettings = () => {
-    saveProxySettings();
-    const currentCamera = urlInput ? urlInput.value.trim() : '';
-    if (currentCamera) {
-      updateBaseFromInput(currentCamera);
-    }
-  };
-
-  proxyToggle.addEventListener('change', applyProxySettings);
-}
-
-// === Wire ESP32 IP input + button ===
-if (esp32ConnectBtn && esp32IpInput) {
-  const saveEsp32FromInput = () => {
-    const normalized = applyEsp32Ip(esp32IpInput.value);
-    if (!normalized) {
-      alert('Enter the ESP32 IP (e.g., http://10.12.22.6)');
-      return;
-    }
+  if (downloadTelemetryBtn) downloadTelemetryBtn.addEventListener('click', downloadTelemetry);
+  if (clearTelemetryBtn) clearTelemetryBtn.addEventListener('click', () => {
+    sessionTelemetry.length = 0;
+    logConsole('Session telemetry cleared.', 'text-muted');
+  });
+  if (urlInput) urlInput.placeholder = 'http://camera-ip:port/stream';
+  if (esp32IpInput) esp32IpInput.placeholder = 'http://10.12.22.6';
+  if (connectBtn && urlInput) connectBtn.addEventListener('click', () => !setStream(urlInput.value) && alert('Enter a valid camera URL (e.g., http://10.0.0.12/stream)'));
+  if (urlInput) urlInput.addEventListener('keyup', (event) => event.key === 'Enter' && connectBtn && connectBtn.click());
+  if (esp32ConnectBtn && esp32IpInput) esp32ConnectBtn.addEventListener('click', () => {
+    const normalized = normalizeBaseUrl(esp32IpInput.value);
+    if (!normalized) return alert('Enter the ESP32 IP (e.g., http://10.12.22.6)');
+    esp32IpInput.value = normalized;
+    localStorage.setItem(ESP32_STORAGE_KEY, normalized);
     syncLaserState();
-  };
-
-  esp32ConnectBtn.addEventListener('click', saveEsp32FromInput);
-  esp32IpInput.addEventListener('keyup', (event) => {
-    if (event.key === 'Enter') {
-      saveEsp32FromInput();
-    }
   });
-}
-
-// === Handle camera image load/error ===
-if (feedImg) {
-  feedImg.addEventListener('load', () => {
-    syncOverlaySize();
-    logConsole('Camera stream connected.', 'text-success');
-    if (overlayCanvas) {
-      overlayCanvas.classList.remove('d-none');
-    }
-    startDetectionLoop();
+  if (esp32IpInput) esp32IpInput.addEventListener('keyup', (event) => event.key === 'Enter' && esp32ConnectBtn && esp32ConnectBtn.click());
+  if (btnUp) btnUp.addEventListener('click', () => sendCmd('servo_down'));
+  if (btnDown) btnDown.addEventListener('click', () => sendCmd('servo_up'));
+  if (btnLeft) btnLeft.addEventListener('click', () => sendCmd('step_left'));
+  if (btnRight) btnRight.addEventListener('click', () => sendCmd('step_right'));
+  if (btnStopCursor) btnStopCursor.addEventListener('click', () => sendCmd('stop'));
+  if (fireBtn) fireBtn.addEventListener('click', async () => {
+    const res = await sendCmd('laser_on');
+    if (!(res && res.ok) && !isLaserOn) await sendCmd('laser_toggle');
+    isLaserOn = true;
   });
-
-  feedImg.addEventListener('error', () => {
-    stopDetectionLoop('error');
-    if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
-      streamCandidateIndex += 1;
-      const nextCandidate = streamCandidates[streamCandidateIndex];
-      const suffix = isProxyEnabled() ? ' (via proxy)' : '';
-      statusLabel.textContent = 'Retrying stream via ' + nextCandidate.directUrl + suffix;
-      logConsole('Stream retry: ' + nextCandidate.directUrl, 'text-warning');
-      feedImg.src = nextCandidate.requestUrl;
-      return;
-    }
-    const hint = isProxyEnabled()
-      ? 'Stream error - check camera address or local proxy status'
-      : 'Stream error - check the address/port/path';
-    statusLabel.textContent = hint;
-    if (!isProxyEnabled()) {
-      logConsole('Tip: if stream works in browser tab but fails here, enable local proxy toggle.', 'text-warning');
-    }
-    logConsole('Stream failed for all candidates.', 'text-danger');
-    feedImg.classList.add('d-none');
-    placeholder.classList.remove('d-none');
+  if (stopLaserBtn) stopLaserBtn.addEventListener('click', async () => {
+    const res = await sendCmd('laser_off');
+    if (!(res && res.ok) && isLaserOn) await sendCmd('laser_toggle');
+    isLaserOn = false;
   });
-}
-
-// === Optional camera IP modal handlers ===
-if (cameraIpModal && modalInput && modalSaveBtn && modalResetBtn) {
-  function showModalAlert(message, variant = 'danger') {
-    // Display a feedback message inside the camera IP modal.
-    if (!modalAlert) return;
-    modalAlert.textContent = message;
-    modalAlert.className = `alert alert-${variant}`;
-    modalAlert.classList.remove('d-none');
-  }
-
-  function hideModalAlert() {
-    // Hide any visible alert inside the camera IP modal.
-    if (!modalAlert) return;
-    modalAlert.classList.add('d-none');
-    modalAlert.textContent = '';
-  }
-
-  cameraIpModal.addEventListener('show.bs.modal', () => {
-    modalInput.value = urlInput.value.trim() || DEFAULT_BASE_URL;
-    hideModalAlert();
-  });
-
-  modalSaveBtn.addEventListener('click', () => {
-    const normalized = updateBaseFromInput(modalInput.value);
-    if (!normalized) {
-      showModalAlert('Enter a valid IP or URL such as http://10.119.108.61');
-      return;
-    }
-    hideModalAlert();
-    if (window.bootstrap && bootstrap.Modal) {
-      const modalInstance = bootstrap.Modal.getInstance(cameraIpModal);
-      if (modalInstance) {
-        modalInstance.hide();
-      }
-    }
-  });
-
-  modalResetBtn.addEventListener('click', () => {
-    modalInput.value = DEFAULT_BASE_URL;
-    hideModalAlert();
-  });
-}
-
-// === Initialize camera base URL from storage ===
-function initCameraBase() {
-  // Load camera base URL from local storage or defaults.
-  if (urlInput) {
-    urlInput.placeholder = 'http://camera-ip:port/stream';
-    urlInput.readOnly = false;
-  }
-
-  const saved = localStorage.getItem(STORAGE_KEY) || DEFAULT_BASE_URL;
-  if (saved) {
-    updateBaseFromInput(saved);
-  } else {
-    if (statusLabel) statusLabel.textContent = 'Stream idle';
-    if (placeholder) placeholder.classList.remove('d-none');
-    if (feedImg) feedImg.classList.add('d-none');
-  }
-}
-
-// === Initialize proxy settings from storage ===
-function initProxySettings() {
-  if (!proxyToggle) return;
-  const savedEnabled = localStorage.getItem(PROXY_ENABLED_STORAGE_KEY);
-  proxyToggle.checked = savedEnabled === '1';
-  saveProxySettings();
-}
-
-// === Initialize ESP32 IP from storage ===
-function initEsp32Ip() {
-  // Load ESP32 IP from local storage.
-  if (esp32IpInput) {
-    esp32IpInput.placeholder = 'http://10.12.22.6';
-  }
-  const local = localStorage.getItem(ESP32_STORAGE_KEY);
-  if (local && esp32IpInput) {
-    esp32IpInput.value = local;
-    syncLaserState();
-  }
-}
-
-// === Wire directional aim controls ===
-function wireAimControls() {
-  // Attach click handlers for directional aim buttons.
-  if (btnUp) btnUp.addEventListener('click', () => {
-    // Camera/servo is mounted inverted on Y axis, so UI up maps to firmware down.
-    sendCmd('servo_down');
-  });
-  if (btnDown) btnDown.addEventListener('click', () => {
-    // Camera/servo is mounted inverted on Y axis, so UI down maps to firmware up.
-    sendCmd('servo_up');
-  });
-  if (btnLeft) btnLeft.addEventListener('click', () => {
-    sendCmd('step_left');
-  });
-  if (btnRight) btnRight.addEventListener('click', () => {
-    sendCmd('step_right');
-  });
-  if (btnStopCursor) btnStopCursor.addEventListener('click', () => {
-    sendCmd('stop');
-  });
-}
-
-// === Wire action buttons (laser/stop/scan) ===
-function wireActionButtons() {
-  // Attach click handlers for fire/stop/laser buttons.
-  const ensureLaserState = async (targetOn) => {
-    const directCmd = targetOn ? 'laser_on' : 'laser_off';
-    const directRes = await sendCmd(directCmd);
-    if (directRes && directRes.ok) {
-      isLaserOn = targetOn;
-      return;
-    }
-
-    // Backward compatibility for older firmware that only supports laser_toggle.
-    if (isLaserOn === targetOn) return;
-    const toggleRes = await sendCmd('laser_toggle');
-    if (toggleRes && toggleRes.ok) {
-      isLaserOn = targetOn;
-    }
-  };
-
-  if (fireBtn) {
-    fireBtn.addEventListener('click', () => {
-      ensureLaserState(true);
-    });
-  }
-  if (stopLaserBtn) {
-    stopLaserBtn.addEventListener('click', () => {
-      ensureLaserState(false);
-    });
-  }
-  if (stopBtn) {
-    stopBtn.addEventListener('click', () => {
-      sendCmd('stop');
-    });
-  }
-  if (scanBtn) {
-    scanBtn.addEventListener('click', () => {
-      alert('Scan mode is not available on the HTTP-only firmware.');
-    });
-  }
-}
-
-// === Wire logout button ===
-function wireLogout() {
-  // Attach logout behavior and redirect to login page.
-  if (!logoutBtn) return;
-  logoutBtn.addEventListener('click', async () => {
+  if (stopBtn) stopBtn.addEventListener('click', () => sendCmd('stop'));
+  if (scanBtn) scanBtn.addEventListener('click', () => alert('Scan mode is not available on the HTTP-only firmware.'));
+  if (logoutBtn) logoutBtn.addEventListener('click', async () => {
     try {
-      if (window.SkyShieldAuth && window.SkyShieldAuth.logout) {
-        await window.SkyShieldAuth.logout();
-      }
+      if (window.SkyShieldAuth && window.SkyShieldAuth.logout) await window.SkyShieldAuth.logout();
     } catch (err) {
       console.error('Logout failed', err);
     } finally {
       window.location.href = 'index.html';
     }
   });
+  if (feedImg) {
+    feedImg.addEventListener('load', () => {
+      syncOverlaySize();
+      logConsole('Camera stream connected.', 'text-success');
+      if (overlayCanvas) overlayCanvas.classList.remove('d-none');
+      startDetectionLoop();
+    });
+    feedImg.addEventListener('error', () => {
+      stopDetectionLoop('error');
+      if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
+        streamCandidateIndex += 1;
+        const next = streamCandidates[streamCandidateIndex];
+        setReadout(statusLabel, `Retrying stream via ${next.directUrl}${isProxyEnabled() ? ' (via proxy)' : ''}`);
+        logConsole(`Stream retry: ${next.directUrl}`, 'text-warning');
+        feedImg.src = next.requestUrl;
+        return;
+      }
+      setReadout(statusLabel, isProxyEnabled() ? 'Stream error - check camera address or proxy status' : 'Stream error - check address / CORS / path');
+      if (!isProxyEnabled()) logConsole('Tip: if the stream opens in a tab but inference fails, confirm camera CORS headers or use proxy mode.', 'text-warning');
+      logConsole('Stream failed for all candidates.', 'text-danger');
+      feedImg.classList.add('d-none');
+      if (placeholder) placeholder.classList.remove('d-none');
+    });
+  }
+  const savedCamera = localStorage.getItem(STORAGE_KEY);
+  const savedEsp = localStorage.getItem(ESP32_STORAGE_KEY);
+  if (savedEsp && esp32IpInput) {
+    esp32IpInput.value = savedEsp;
+    syncLaserState();
+  }
+  if (savedCamera) {
+    if (urlInput) urlInput.value = savedCamera;
+    setStream(savedCamera);
+  } else {
+    setReadout(statusLabel, 'Stream idle');
+    if (placeholder) placeholder.classList.remove('d-none');
+    if (feedImg) feedImg.classList.add('d-none');
+  }
+  window.addEventListener('resize', syncOverlaySize);
+  if (window.SkyShieldAuth) window.SkyShieldAuth.requireAuth();
+  else console.error('SkyShieldAuth module missing. Protected routes may be vulnerable.');
 }
 
-// === Run startup initialization ===
-initProxySettings();
-initCameraBase();
-initEsp32Ip();
-wireAimControls();
-wireActionButtons();
-wireLogout();
-// === Keep overlay synced on resize ===
-window.addEventListener('resize', () => {
-  syncOverlaySize();
-});
-
-// === Protect page by requiring authentication ===
-if (window.SkyShieldAuth) {
-  window.SkyShieldAuth.requireAuth();
-} else {
-  console.error('SkyShieldAuth module missing. Protected routes may be vulnerable.');
-}
+init();
