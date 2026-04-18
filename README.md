@@ -2,6 +2,14 @@
 
 This folder contains the operator web UI and browser-side logic.
 
+The current control page supports:
+
+- direct ESP32-CAM stream loading
+- browser-side COCO-SSD inference
+- target-center telemetry and filtered offsets
+- simulated pan/tilt outputs
+- HTTP control for the separate servo/laser ESP32
+
 ## Structure
 
 ```text
@@ -38,4 +46,4 @@ node code/tools/camera-proxy.mjs
 ```
 
 - Page scripts were moved to `js/pages/` to keep shared vs page-specific code separated.
-
+- The main control page now expects the improved controller firmware `/status` endpoint to return JSON, but still tolerates the old text format.

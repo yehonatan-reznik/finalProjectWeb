@@ -611,18 +611,35 @@ function sendCmd(cmd) {
     alert('Set the ESP32 address first.');
     return Promise.resolve(null);
   }
-  return fetch(`${ip}/${cmd}`).catch((err) => {
+  return fetch(`${ip}/${cmd}`, { cache: 'no-store' }).catch((err) => {
     console.error(`Command ${cmd} failed:`, err);
     return null;
   });
+}
+
+function parseControllerStatusText(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    const laserMatch = text.match(/laser[:=](\d)/i);
+    const xMatch = text.match(/x[:=](-?\d+)/i);
+    const yMatch = text.match(/y[:=](-?\d+)/i);
+    return {
+      laser: laserMatch ? Number.parseInt(laserMatch[1], 10) : null,
+      x: xMatch ? Number.parseInt(xMatch[1], 10) : null,
+      y: yMatch ? Number.parseInt(yMatch[1], 10) : null,
+    };
+  }
 }
 
 async function syncLaserState() {
   const res = await sendCmd('status');
   if (!res || !res.ok) return;
   const text = await res.text();
-  const match = text.match(/laser=(\d)/i);
-  if (match) isLaserOn = match[1] === '1';
+  const status = parseControllerStatusText(text);
+  if (!status) return;
+  if (typeof status.laser === 'number') isLaserOn = status.laser === 1;
 }
 
 function downloadTelemetry() {

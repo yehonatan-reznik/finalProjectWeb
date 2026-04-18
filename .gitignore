@@ -1,0 +1,18 @@
+# Local firmware secrets
+firmware/**/secrets.h
+
+# Node / tooling
+node_modules/
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Build artifacts
+build/
+dist/
+*.bin
+*.elf
+*.map
