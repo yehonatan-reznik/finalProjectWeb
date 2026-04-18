@@ -611,10 +611,30 @@ function sendCmd(cmd) {
     alert('Set the ESP32 address first.');
     return Promise.resolve(null);
   }
-  return fetch(`${ip}/${cmd}`, { cache: 'no-store' }).catch((err) => {
-    console.error(`Command ${cmd} failed:`, err);
-    return null;
-  });
+  return fetch(`${ip}/${cmd}`, { cache: 'no-store' })
+    .then(async (res) => {
+      if (!res.ok) {
+        try {
+          const text = await res.clone().text();
+          let message = text;
+          try {
+            const payload = JSON.parse(text);
+            if (payload && payload.error) message = payload.error;
+          } catch (err) {
+            // Keep raw response text when the controller returns non-JSON content.
+          }
+          logConsole(`Controller rejected ${cmd}: ${message}`, 'text-warning');
+        } catch (err) {
+          console.warn(`Failed to read controller error for ${cmd}.`, err);
+        }
+      }
+      return res;
+    })
+    .catch((err) => {
+      console.error(`Command ${cmd} failed:`, err);
+      logConsole(`Controller command failed: ${cmd}`, 'text-danger');
+      return null;
+    });
 }
 
 function parseControllerStatusText(text) {
