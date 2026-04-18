@@ -296,6 +296,105 @@
             <div class="form-text text-muted mt-2">Simulation only. No automatic servo commands are generated from detections.</div>
           </div>
         </div>
+        <div class="card card-hud status-panel mt-3">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-compass me-2"></i>Operator Assist
+          </div>
+          <div class="card-body">
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Move Need</div>
+              <div class="col-7 status-grid-value text-end"><span id="assistMoveVal" class="status-emphasis">No target</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Button Hint</div>
+              <div class="col-7 status-grid-value text-end"><span id="assistButtonVal" class="status-emphasis">Run calibration</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Center Check</div>
+              <div class="col-7 status-grid-value text-end"><span id="assistCenterVal" class="status-emphasis">Not centered</span></div>
+            </div>
+            <div class="form-text text-muted mt-2">Manual-assist only. This panel tells the operator which direction to move. It does not drive the servos automatically.</div>
+          </div>
+        </div>
+        <div class="card card-hud status-panel mt-3">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-tools me-2"></i>Servo Calibration
+          </div>
+          <div class="card-body">
+            <div class="row g-2 mb-3">
+              <div class="col-12 d-grid gap-2">
+                <button id="refreshControllerConfigBtn" class="btn btn-outline-info btn-sm">
+                  <i class="bi bi-arrow-repeat me-2"></i>Read Controller Config
+                </button>
+                <button id="centerRigBtn" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-bullseye me-2"></i>Center Rig
+                </button>
+              </div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6 d-grid">
+                <button id="probeXPositiveBtn" class="btn btn-outline-success btn-sm">Test X+</button>
+              </div>
+              <div class="col-6 d-grid">
+                <button id="probeXNegativeBtn" class="btn btn-outline-success btn-sm">Test X-</button>
+              </div>
+              <div class="col-6 d-grid">
+                <button id="probeYPositiveBtn" class="btn btn-outline-success btn-sm">Test Y+</button>
+              </div>
+              <div class="col-6 d-grid">
+                <button id="probeYNegativeBtn" class="btn btn-outline-success btn-sm">Test Y-</button>
+              </div>
+            </div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label for="xObservedSelect" class="form-label mb-1 text-uppercase small text-muted">Observed X+</label>
+                <select id="xObservedSelect" class="form-select form-select-sm">
+                  <option value="unknown">Unknown</option>
+                  <option value="left">Moves left</option>
+                  <option value="right">Moves right</option>
+                  <option value="up">Moves up</option>
+                  <option value="down">Moves down</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="yObservedSelect" class="form-label mb-1 text-uppercase small text-muted">Observed Y+</label>
+                <select id="yObservedSelect" class="form-select form-select-sm">
+                  <option value="unknown">Unknown</option>
+                  <option value="left">Moves left</option>
+                  <option value="right">Moves right</option>
+                  <option value="up">Moves up</option>
+                  <option value="down">Moves down</option>
+                </select>
+              </div>
+              <div class="col-12 d-grid gap-2">
+                <button id="saveCalibrationBtn" class="btn btn-outline-info btn-sm">
+                  <i class="bi bi-save me-2"></i>Save Calibration Notes
+                </button>
+                <button id="resetCalibrationBtn" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>Reset Calibration Notes
+                </button>
+              </div>
+            </div>
+            <hr class="border-muted opacity-25" />
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Controller</div>
+              <div class="col-7 status-grid-value text-end"><span id="controllerConfigVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Pan Axis</div>
+              <div class="col-7 status-grid-value text-end"><span id="calibrationPanVal" class="status-emphasis">unknown</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Tilt Axis</div>
+              <div class="col-7 status-grid-value text-end"><span id="calibrationTiltVal" class="status-emphasis">unknown</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Manual Map</div>
+              <div class="col-7 status-grid-value text-end"><span id="calibrationButtonsVal" class="status-emphasis">Run X+/Y+ test</span></div>
+            </div>
+            <div class="form-text text-muted mt-2">Calibration uses small bench nudges only. Watch which way the rig moves and save the observed direction for X+ and Y+.</div>
+          </div>
+        </div>
       </div>
     </div>
   </main>

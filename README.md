@@ -11,6 +11,7 @@ This repo now contains the full demo project:
 
 - Detection in the browser is working.
 - The control page now shows filtered center offsets and simulated pan/tilt output.
+- The control page now also includes manual-assist move hints and servo-calibration tools for bench testing.
 - The detector still uses generic COCO-SSD classes, so this remains a demo and not a validated real-drone detector.
 
 ## Repo layout
@@ -56,6 +57,12 @@ If the browser blocks stream access because of CORS, enable proxy mode in the UI
 ```powershell
 node tools/camera-proxy.mjs
 ```
+
+## Manual assist and calibration
+
+- `Operator Assist` turns the detection offset into manual guidance such as `PAN RIGHT_MED` or `TILT UP_SMALL`.
+- `Servo Calibration` lets you send small `X` and `Y` nudges, record what `X+` and `Y+` physically do, and derive which axis is pan vs tilt.
+- This remains manual-assist only. No automatic servo motion is generated from live detections.
 
 ## Firmware notes
 

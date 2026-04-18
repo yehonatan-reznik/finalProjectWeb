@@ -41,17 +41,36 @@ const smoothingInput = $('smoothingInput');
 const deadZoneInput = $('deadZoneInput');
 const downloadTelemetryBtn = $('downloadTelemetryBtn');
 const clearTelemetryBtn = $('clearTelemetryBtn');
+const assistMoveVal = $('assistMoveVal');
+const assistButtonVal = $('assistButtonVal');
+const assistCenterVal = $('assistCenterVal');
+const refreshControllerConfigBtn = $('refreshControllerConfigBtn');
+const centerRigBtn = $('centerRigBtn');
+const probeXPositiveBtn = $('probeXPositiveBtn');
+const probeXNegativeBtn = $('probeXNegativeBtn');
+const probeYPositiveBtn = $('probeYPositiveBtn');
+const probeYNegativeBtn = $('probeYNegativeBtn');
+const xObservedSelect = $('xObservedSelect');
+const yObservedSelect = $('yObservedSelect');
+const saveCalibrationBtn = $('saveCalibrationBtn');
+const resetCalibrationBtn = $('resetCalibrationBtn');
+const controllerConfigVal = $('controllerConfigVal');
+const calibrationPanVal = $('calibrationPanVal');
+const calibrationTiltVal = $('calibrationTiltVal');
+const calibrationButtonsVal = $('calibrationButtonsVal');
 
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
 const PROXY_ENABLED_STORAGE_KEY = 'skyshield_camera_proxy_enabled';
 const DETECTION_SETTINGS_STORAGE_KEY = 'skyshield_detection_settings_v2';
+const ASSIST_CALIBRATION_STORAGE_KEY = 'skyshield_assist_calibration_v1';
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:3001/proxy?url=';
 const DETECT_INTERVAL_MS = 180;
 const DRAW_THRESHOLD = 0.05;
 const LOST_LIMIT = 8;
 const MAX_LOG_ROWS = 250;
 const MAX_TELEMETRY = 1200;
+const CALIBRATION_PROBE_DELTA_DEG = 5;
 
 const PROFILES = {
   strict: { id: 'strict', label: 'Strict aircraft', labels: ['airplane', 'aeroplane'] },
@@ -93,6 +112,21 @@ const trackingState = {
 };
 
 window.SkyShieldTracking = trackingState;
+
+const controllerState = {
+  config: null,
+  calibration: {
+    xPositiveObserved: 'unknown',
+    yPositiveObserved: 'unknown',
+  },
+};
+
+const MANUAL_BUTTON_COMMANDS = [
+  { button: 'Left', command: 'step_left' },
+  { button: 'Right', command: 'step_right' },
+  { button: 'Up', command: 'servo_down' },
+  { button: 'Down', command: 'servo_up' },
+];
 
 function clamp(value, min, max, fallback) {
   const n = Number.parseFloat(value);
@@ -177,6 +211,183 @@ function loadSettings() {
   setProfileStatus(profile.id);
 }
 
+function normalizeObservedDirection(value) {
+  return ['left', 'right', 'up', 'down'].includes(value) ? value : 'unknown';
+}
+
+function getOppositeDirection(direction) {
+  switch (direction) {
+    case 'left':
+      return 'right';
+    case 'right':
+      return 'left';
+    case 'up':
+      return 'down';
+    case 'down':
+      return 'up';
+    default:
+      return 'unknown';
+  }
+}
+
+function axisRoleFromDirection(direction) {
+  if (direction === 'left' || direction === 'right') return 'pan';
+  if (direction === 'up' || direction === 'down') return 'tilt';
+  return 'unknown';
+}
+
+function friendlyDirection(direction) {
+  return normalizeObservedDirection(direction) === 'unknown' ? 'unknown' : direction.toUpperCase();
+}
+
+function commandDirectionFromRawPositive(rawPositiveDirection, signedFactor) {
+  const raw = normalizeObservedDirection(rawPositiveDirection);
+  if (raw === 'unknown') return 'unknown';
+  return signedFactor >= 0 ? raw : getOppositeDirection(raw);
+}
+
+function parseSimLabel(label) {
+  if (!label || label === 'HOLD') {
+    return { label: 'HOLD', direction: 'hold', size: 'HOLD', taps: 0 };
+  }
+  const [directionRaw, sizeRaw] = String(label).split('_');
+  const direction = String(directionRaw || '').toLowerCase();
+  const size = String(sizeRaw || 'SMALL').toUpperCase();
+  const taps = size === 'LARGE' ? 3 : size === 'MED' ? 2 : 1;
+  return { label, direction, size, taps };
+}
+
+function readCalibrationFromControls() {
+  controllerState.calibration.xPositiveObserved = normalizeObservedDirection(xObservedSelect && xObservedSelect.value);
+  controllerState.calibration.yPositiveObserved = normalizeObservedDirection(yObservedSelect && yObservedSelect.value);
+}
+
+function writeCalibrationControls() {
+  if (xObservedSelect) xObservedSelect.value = normalizeObservedDirection(controllerState.calibration.xPositiveObserved);
+  if (yObservedSelect) yObservedSelect.value = normalizeObservedDirection(controllerState.calibration.yPositiveObserved);
+}
+
+function loadCalibration() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(ASSIST_CALIBRATION_STORAGE_KEY) || 'null');
+  } catch (err) {
+    console.warn('Failed to parse saved calibration.', err);
+  }
+  controllerState.calibration = {
+    xPositiveObserved: normalizeObservedDirection(saved && saved.xPositiveObserved),
+    yPositiveObserved: normalizeObservedDirection(saved && saved.yPositiveObserved),
+  };
+  writeCalibrationControls();
+}
+
+function saveCalibration(logChange) {
+  readCalibrationFromControls();
+  localStorage.setItem(ASSIST_CALIBRATION_STORAGE_KEY, JSON.stringify(controllerState.calibration));
+  if (logChange) {
+    logConsole(`Calibration saved: X+=${friendlyDirection(controllerState.calibration.xPositiveObserved)}, Y+=${friendlyDirection(controllerState.calibration.yPositiveObserved)}`, 'text-info');
+  }
+}
+
+function resetCalibration() {
+  controllerState.calibration = {
+    xPositiveObserved: 'unknown',
+    yPositiveObserved: 'unknown',
+  };
+  localStorage.removeItem(ASSIST_CALIBRATION_STORAGE_KEY);
+  writeCalibrationControls();
+}
+
+function getControllerConfigNumber(value, fallback) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function deriveCalibration() {
+  const xObserved = normalizeObservedDirection(controllerState.calibration.xPositiveObserved);
+  const yObserved = normalizeObservedDirection(controllerState.calibration.yPositiveObserved);
+  const xRole = axisRoleFromDirection(xObserved);
+  const yRole = axisRoleFromDirection(yObserved);
+  const xDir = getControllerConfigNumber(controllerState.config && controllerState.config.x_dir, 1);
+  const yDir = getControllerConfigNumber(controllerState.config && controllerState.config.y_dir, 1);
+  const commands = {
+    step_right: commandDirectionFromRawPositive(xObserved, xDir),
+    step_left: commandDirectionFromRawPositive(xObserved, -xDir),
+    servo_up: commandDirectionFromRawPositive(yObserved, yDir),
+    servo_down: commandDirectionFromRawPositive(yObserved, -yDir),
+  };
+
+  let panSummary = 'unknown';
+  if (xRole === 'pan') panSummary = `X (+ => ${friendlyDirection(xObserved)})`;
+  else if (yRole === 'pan') panSummary = `Y (+ => ${friendlyDirection(yObserved)})`;
+
+  let tiltSummary = 'unknown';
+  if (xRole === 'tilt') tiltSummary = `X (+ => ${friendlyDirection(xObserved)})`;
+  else if (yRole === 'tilt') tiltSummary = `Y (+ => ${friendlyDirection(yObserved)})`;
+
+  const buttonSummary = MANUAL_BUTTON_COMMANDS
+    .map(({ button, command }) => `${button}=${friendlyDirection(commands[command])}`)
+    .join(' | ');
+
+  return { xObserved, yObserved, xRole, yRole, xDir, yDir, commands, panSummary, tiltSummary, buttonSummary };
+}
+
+function findManualButtonForDirection(direction, derived) {
+  const target = normalizeObservedDirection(direction);
+  if (target === 'unknown') return null;
+  return MANUAL_BUTTON_COMMANDS.find(({ command }) => derived.commands[command] === target) || null;
+}
+
+function formatAxisAssist(axisName, parsedLabel, derived) {
+  if (!parsedLabel || parsedLabel.direction === 'hold') return `${axisName}: HOLD`;
+  const button = findManualButtonForDirection(parsedLabel.direction, derived);
+  const moveText = `${friendlyDirection(parsedLabel.direction)}_${parsedLabel.size}`;
+  if (!button) return `${axisName}: ${moveText} (finish calibration)`;
+  return `${axisName}: ${button.button} x${parsedLabel.taps}`;
+}
+
+function updateCalibrationReadouts() {
+  const derived = deriveCalibration();
+  if (controllerConfigVal) {
+    setReadout(controllerConfigVal, controllerState.config ? `x_dir=${derived.xDir}, y_dir=${derived.yDir}` : 'n/a');
+  }
+  setReadout(calibrationPanVal, derived.panSummary);
+  setReadout(calibrationTiltVal, derived.tiltSummary);
+  setReadout(calibrationButtonsVal, derived.buttonSummary);
+}
+
+function updateOperatorAssistReadout() {
+  const derived = deriveCalibration();
+  if (!trackingState.hasTarget) {
+    setReadout(assistMoveVal, 'No target');
+    setReadout(assistButtonVal, derived.xObserved === 'unknown' || derived.yObserved === 'unknown' ? 'Run calibration' : 'Wait for target');
+    setReadout(assistCenterVal, 'Not centered');
+    return;
+  }
+
+  const panAssist = parseSimLabel(trackingState.simPanLabel);
+  const tiltAssist = parseSimLabel(trackingState.simTiltLabel);
+  const centered = panAssist.direction === 'hold' && tiltAssist.direction === 'hold';
+
+  if (centered) {
+    setReadout(assistMoveVal, trackingState.isPossible ? 'Centered (possible)' : 'Centered');
+    setReadout(assistButtonVal, 'Hold position');
+    setReadout(assistCenterVal, 'Centered');
+    return;
+  }
+
+  const moveParts = [];
+  if (panAssist.direction !== 'hold') moveParts.push(`PAN ${friendlyDirection(panAssist.direction)}_${panAssist.size}`);
+  if (tiltAssist.direction !== 'hold') moveParts.push(`TILT ${friendlyDirection(tiltAssist.direction)}_${tiltAssist.size}`);
+  setReadout(assistMoveVal, moveParts.join(' / '));
+
+  const buttonParts = [];
+  if (panAssist.direction !== 'hold') buttonParts.push(formatAxisAssist('Pan', panAssist, derived));
+  if (tiltAssist.direction !== 'hold') buttonParts.push(formatAxisAssist('Tilt', tiltAssist, derived));
+  setReadout(assistButtonVal, buttonParts.join(' / '));
+  setReadout(assistCenterVal, trackingState.isPossible ? 'Off-center (possible)' : 'Off-center');
+}
+
 function setReadout(el, text) {
   if (el) el.textContent = text;
 }
@@ -217,6 +428,7 @@ function clearTargetTelemetry() {
     simTiltLabel: 'HOLD',
     loopMs: 0,
   });
+  updateOperatorAssistReadout();
 }
 
 function syncOverlaySize() {
@@ -405,6 +617,7 @@ function updateSelectedTarget(selected, settings, loopMs) {
   setReadout(targetDeltaNormVal, formatNorm(filtered.normX, filtered.normY));
   setReadout(simCommandVal, `${sim.panLabel} (${sim.pan.toFixed(2)}) / ${sim.tiltLabel} (${sim.tilt.toFixed(2)})`);
   setReadout(loopTimeVal, loopMs.toFixed(1));
+  updateOperatorAssistReadout();
 }
 
 function pushTelemetry(entry) {
@@ -653,6 +866,30 @@ function parseControllerStatusText(text) {
   }
 }
 
+async function syncControllerConfig(logSuccess) {
+  const res = await sendCmd('config');
+  if (!res || !res.ok) {
+    controllerState.config = null;
+    updateCalibrationReadouts();
+    updateOperatorAssistReadout();
+    return null;
+  }
+  try {
+    controllerState.config = await res.json();
+    updateCalibrationReadouts();
+    updateOperatorAssistReadout();
+    if (logSuccess) logConsole(`Controller config loaded: x_dir=${getControllerConfigNumber(controllerState.config.x_dir, 1)}, y_dir=${getControllerConfigNumber(controllerState.config.y_dir, 1)}`, 'text-info');
+    return controllerState.config;
+  } catch (err) {
+    console.error('Failed to parse controller config.', err);
+    controllerState.config = null;
+    updateCalibrationReadouts();
+    updateOperatorAssistReadout();
+    if (logSuccess) logConsole('Controller config parse failed.', 'text-warning');
+    return null;
+  }
+}
+
 async function syncLaserState() {
   const res = await sendCmd('status');
   if (!res || !res.ok) return;
@@ -660,6 +897,14 @@ async function syncLaserState() {
   const status = parseControllerStatusText(text);
   if (!status) return;
   if (typeof status.laser === 'number') isLaserOn = status.laser === 1;
+}
+
+async function sendProbe(axis, sign) {
+  const delta = sign > 0 ? CALIBRATION_PROBE_DELTA_DEG : -CALIBRATION_PROBE_DELTA_DEG;
+  const query = axis === 'x' ? `nudge?dx=${delta}` : `nudge?dy=${delta}`;
+  const res = await sendCmd(query);
+  if (!res || !res.ok) return;
+  logConsole(`Calibration probe sent: ${axis.toUpperCase()}${sign > 0 ? '+' : '-'} (${delta > 0 ? '+' : ''}${delta} deg)`, 'text-info');
 }
 
 function downloadTelemetry() {
@@ -678,6 +923,9 @@ function downloadTelemetry() {
 function init() {
   clearTargetTelemetry();
   loadSettings();
+  loadCalibration();
+  updateCalibrationReadouts();
+  updateOperatorAssistReadout();
   if (proxyToggle) {
     proxyToggle.checked = localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
     proxyToggle.addEventListener('change', () => {
@@ -697,6 +945,33 @@ function init() {
     sessionTelemetry.length = 0;
     logConsole('Session telemetry cleared.', 'text-muted');
   });
+  [xObservedSelect, yObservedSelect].filter(Boolean).forEach((el) => {
+    el.addEventListener('change', () => {
+      saveCalibration(false);
+      updateCalibrationReadouts();
+      updateOperatorAssistReadout();
+    });
+  });
+  if (saveCalibrationBtn) saveCalibrationBtn.addEventListener('click', () => {
+    saveCalibration(true);
+    updateCalibrationReadouts();
+    updateOperatorAssistReadout();
+  });
+  if (resetCalibrationBtn) resetCalibrationBtn.addEventListener('click', () => {
+    resetCalibration();
+    updateCalibrationReadouts();
+    updateOperatorAssistReadout();
+    logConsole('Calibration notes cleared.', 'text-muted');
+  });
+  if (refreshControllerConfigBtn) refreshControllerConfigBtn.addEventListener('click', () => syncControllerConfig(true));
+  if (centerRigBtn) centerRigBtn.addEventListener('click', async () => {
+    const res = await sendCmd('center');
+    if (res && res.ok) logConsole('Rig centered for calibration.', 'text-info');
+  });
+  if (probeXPositiveBtn) probeXPositiveBtn.addEventListener('click', () => sendProbe('x', 1));
+  if (probeXNegativeBtn) probeXNegativeBtn.addEventListener('click', () => sendProbe('x', -1));
+  if (probeYPositiveBtn) probeYPositiveBtn.addEventListener('click', () => sendProbe('y', 1));
+  if (probeYNegativeBtn) probeYNegativeBtn.addEventListener('click', () => sendProbe('y', -1));
   if (urlInput) urlInput.placeholder = 'http://camera-ip:port/stream';
   if (esp32IpInput) esp32IpInput.placeholder = 'http://10.12.22.6';
   if (connectBtn && urlInput) connectBtn.addEventListener('click', () => !setStream(urlInput.value) && alert('Enter a valid camera URL (e.g., http://10.0.0.12/stream)'));
@@ -707,6 +982,7 @@ function init() {
     esp32IpInput.value = normalized;
     localStorage.setItem(ESP32_STORAGE_KEY, normalized);
     syncLaserState();
+    syncControllerConfig(true);
   });
   if (esp32IpInput) esp32IpInput.addEventListener('keyup', (event) => event.key === 'Enter' && esp32ConnectBtn && esp32ConnectBtn.click());
   if (btnUp) btnUp.addEventListener('click', () => sendCmd('servo_down'));
@@ -764,6 +1040,7 @@ function init() {
   if (savedEsp && esp32IpInput) {
     esp32IpInput.value = savedEsp;
     syncLaserState();
+    syncControllerConfig(false);
   }
   if (savedCamera) {
     if (urlInput) urlInput.value = savedCamera;

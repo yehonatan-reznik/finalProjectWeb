@@ -31,6 +31,8 @@ Use this checklist to prove the demo is behaving as expected before any servo tr
 - Keep the laser disconnected or replace it with an LED
 - Confirm controller `/status` and `/config` endpoints respond
 - Start with `/center`
+- Use the UI calibration probes to test `X+`, `X-`, `Y+`, and `Y-`
+- Save the observed `X+` and `Y+` directions in the control page
 - Test one axis at a time with small manual nudges
 - Verify servo direction matches the UI labels
 - Verify motion stays inside the configured angle limits
