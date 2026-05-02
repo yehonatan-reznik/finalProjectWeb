@@ -605,6 +605,23 @@ function simCommand(filtered, settings) {
   return { pan: pan.value, tilt: tilt.value, panLabel: pan.label, tiltLabel: tilt.label };
 }
 
+function describeCameraMove() {
+  const panAssist = parseSimLabel(trackingState.simPanLabel);
+  const tiltAssist = parseSimLabel(trackingState.simTiltLabel);
+  const moves = [];
+  if (panAssist.direction !== 'hold') moves.push(friendlyDirection(panAssist.direction));
+  if (tiltAssist.direction !== 'hold') moves.push(friendlyDirection(tiltAssist.direction));
+  return moves.length ? moves.join(' / ') : 'HOLD';
+}
+
+function buildTargetLogMessage(selected) {
+  const labelText = `${selected.class} ${((selected.score || 0) * 100).toFixed(1)}%`;
+  const x = trackingState.rawCenterX.toFixed(0);
+  const y = trackingState.rawCenterY.toFixed(0);
+  const move = describeCameraMove();
+  return `Target detected: ${labelText} x=${x} y=${y} move=${move}`;
+}
+
 function drawReticle() {
   if (!(overlayCtx && overlayCanvas)) return;
   const cx = overlayCanvas.width / 2;
@@ -968,11 +985,12 @@ async function runDetection() {
     updateSelectedTarget(selected, settings, loopMs);
     drawScene(detections, selected);
     const labelText = `${selected.class} ${((selected.score || 0) * 100).toFixed(1)}%`;
+    const targetLogMessage = buildTargetLogMessage(selected);
     const deltaText = ` dx=${trackingState.filteredDeltaX.toFixed(0)} dy=${trackingState.filteredDeltaY.toFixed(0)}`;
     if (selected.isStrong) {
       setDetectStatus('Detect: target', 'bg-danger');
       setSafetyState('danger', 'Air target detected');
-      if (lastDetectState !== 'target' || lastDetectLabel !== labelText) logConsole(`Target detected: ${labelText}${deltaText}`, 'text-danger');
+      logConsole(targetLogMessage, 'text-danger');
       lastDetectState = 'target';
     } else {
       setDetectStatus('Detect: possible', 'bg-warning text-dark');
