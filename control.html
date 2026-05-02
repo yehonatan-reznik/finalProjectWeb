@@ -84,7 +84,7 @@
                 </div>
               </div>
               <div class="form-text text-muted">If enabled, run <code>node code/tools/camera-proxy.mjs</code>.</div>
-              <div class="form-text text-muted">Detection uses generic COCO-SSD classes, not a trained drone model.</div>
+              <div class="form-text text-muted">Choose a detector below. `COCO-SSD` is generic; `AeroYOLO` is a local ONNX model trained for aircraft, drones, and helicopters and is the better default for drone work.</div>
             </div>
           </div>
           <div class="card-body">
@@ -219,7 +219,7 @@
             </div>
             <div class="row g-2 status-grid">
               <div class="col-6 status-grid-label">Profile</div>
-              <div class="col-6 status-grid-value text-end"><span id="profileVal" class="status-emphasis">Strict aircraft</span></div>
+              <div class="col-6 status-grid-value text-end"><span id="profileVal" class="status-emphasis">Drone / rotorcraft focus</span></div>
             </div>
             <div class="row g-2 status-grid">
               <div class="col-6 status-grid-label">Target</div>
@@ -262,10 +262,17 @@
           <div class="card-body">
             <div class="row g-2">
               <div class="col-12">
+                <label for="detectBackendSelect" class="form-label mb-1 text-uppercase small text-muted">Detector Backend</label>
+                <select id="detectBackendSelect" class="form-select form-select-sm">
+                  <option value="aeroyolo" selected>AeroYOLO ONNX (drone / aircraft / helicopter)</option>
+                  <option value="coco">COCO-SSD (generic browser model)</option>
+                </select>
+              </div>
+              <div class="col-12">
                 <label for="detectProfileSelect" class="form-label mb-1 text-uppercase small text-muted">Detection Profile</label>
                 <select id="detectProfileSelect" class="form-select form-select-sm">
-                  <option value="strict">Strict aircraft proxy</option>
-                  <option value="broad">Broad air-target demo</option>
+                  <option value="strict">Drone / rotorcraft focus</option>
+                  <option value="broad">Full air sweep</option>
                 </select>
               </div>
               <div class="col-6">
@@ -294,6 +301,8 @@
               </div>
             </div>
             <div class="form-text text-muted mt-2">Simulation only. No automatic servo commands are generated from detections.</div>
+            <div class="form-text text-muted">Target lock now relaxes follow-up confidence slightly after a fresh hit so short dips do not immediately drop the track.</div>
+            <div class="form-text text-muted">Focused mode keeps `drone` and `helicopter` together on AeroYOLO because small UAVs can overlap with rotorcraft features at distance.</div>
           </div>
         </div>
         <div class="card card-hud status-panel mt-3">
@@ -406,6 +415,7 @@
 
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.webgpu.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>

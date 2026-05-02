@@ -34,6 +34,7 @@ const targetDeltaVal = $('targetDeltaVal');
 const targetDeltaNormVal = $('targetDeltaNormVal');
 const simCommandVal = $('simCommandVal');
 const loopTimeVal = $('loopTimeVal');
+const detectBackendSelect = $('detectBackendSelect');
 const detectProfileSelect = $('detectProfileSelect');
 const strongThresholdInput = $('strongThresholdInput');
 const possibleThresholdInput = $('possibleThresholdInput');
@@ -65,16 +66,45 @@ const PROXY_ENABLED_STORAGE_KEY = 'skyshield_camera_proxy_enabled';
 const DETECTION_SETTINGS_STORAGE_KEY = 'skyshield_detection_settings_v2';
 const ASSIST_CALIBRATION_STORAGE_KEY = 'skyshield_assist_calibration_v1';
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:3001/proxy?url=';
+const DRONE_MODEL_URL = 'models/aeroyolo.onnx';
+const DEFAULT_DETECT_BACKEND_ID = 'aeroyolo';
 const DETECT_INTERVAL_MS = 180;
+const DETECT_MIN_IDLE_MS = 24;
+const DETECT_MAX_SOURCE_WIDTH = 384;
+const DETECT_MAX_SOURCE_HEIGHT = 384;
 const DRAW_THRESHOLD = 0.05;
 const LOST_LIMIT = 8;
 const MAX_LOG_ROWS = 250;
 const MAX_TELEMETRY = 1200;
 const CALIBRATION_PROBE_DELTA_DEG = 5;
+const TRACK_LOCK_THRESHOLD_FACTOR = 0.6;
+const TRACK_LOCK_DISTANCE_RATIO = 0.22;
+const TRACK_LOCK_MIN_SCORE = 0.08;
+
+const DETECT_BACKENDS = {
+  coco: { id: 'coco', label: 'COCO-SSD' },
+  aeroyolo: { id: 'aeroyolo', label: 'AeroYOLO ONNX' },
+};
+
+const DRONE_MODEL_LABELS = {
+  0: 'aircraft',
+  1: 'drone',
+  2: 'helicopter',
+};
 
 const PROFILES = {
-  strict: { id: 'strict', label: 'Strict aircraft', labels: ['airplane', 'aeroplane'] },
-  broad: { id: 'broad', label: 'Broad air-target demo', labels: ['airplane', 'aeroplane', 'bird', 'kite'] },
+  strict: {
+    id: 'strict',
+    label: 'Drone / rotorcraft focus',
+    cocoLabels: ['airplane', 'aeroplane'],
+    aeroyoloLabels: ['drone', 'helicopter'],
+  },
+  broad: {
+    id: 'broad',
+    label: 'Full air sweep',
+    cocoLabels: ['airplane', 'aeroplane', 'bird', 'kite'],
+    aeroyoloLabels: ['drone', 'aircraft', 'helicopter'],
+  },
 };
 
 let streamCandidates = [];
@@ -83,11 +113,16 @@ let detectTimer = null;
 let detectLoopActive = false;
 let detectModel = null;
 let detectModelReady = false;
+let droneDetectSession = null;
+let droneDetectSessionReady = false;
 let isDetecting = false;
 let isLaserOn = false;
 let frameCounter = 0;
 let lastDetectState = '';
 let lastDetectLabel = '';
+let detectBackendReady = false;
+let detectSourceCanvas = null;
+let detectSourceCtx = null;
 const sessionTelemetry = [];
 
 const trackingState = {
@@ -138,6 +173,26 @@ function getProfile(profileId) {
   return PROFILES[profileId] || PROFILES.strict;
 }
 
+function getDetectBackend(backendId) {
+  return DETECT_BACKENDS[backendId] || DETECT_BACKENDS.coco;
+}
+
+function getProfileLabels(profile, backendId) {
+  if (!profile) return [];
+  return backendId === 'aeroyolo' ? (profile.aeroyoloLabels || []) : (profile.cocoLabels || []);
+}
+
+function hasTrackLock() {
+  return trackingState.hasTarget && trackingState.missedFrames < LOST_LIMIT && !!trackingState.label;
+}
+
+function isNearLockedTarget(metrics) {
+  if (!hasTrackLock() || !metrics || !overlayCanvas) return false;
+  const diag = Math.max(1, Math.hypot(overlayCanvas.width, overlayCanvas.height));
+  const distance = Math.hypot(metrics.centerX - trackingState.filteredCenterX, metrics.centerY - trackingState.filteredCenterY);
+  return distance / diag <= TRACK_LOCK_DISTANCE_RATIO;
+}
+
 function logConsole(message, variant) {
   if (!consolePanel) return;
   const row = document.createElement('div');
@@ -175,17 +230,19 @@ function setProfileStatus(profileId) {
 }
 
 function getSettings() {
+  const backend = getDetectBackend(detectBackendSelect ? detectBackendSelect.value : DEFAULT_DETECT_BACKEND_ID);
   const profile = getProfile(detectProfileSelect ? detectProfileSelect.value : 'strict');
   const strongThreshold = clamp(strongThresholdInput && strongThresholdInput.value, 0.05, 0.99, 0.3);
   const possibleThreshold = clamp(possibleThresholdInput && possibleThresholdInput.value, 0.01, strongThreshold, 0.12);
   const smoothingAlpha = clamp(smoothingInput && smoothingInput.value, 0.05, 1, 0.35);
   const deadZone = clamp(deadZoneInput && deadZoneInput.value, 0, 0.5, 0.08);
-  return { profile, strongThreshold, possibleThreshold, smoothingAlpha, deadZone };
+  return { backend, profile, strongThreshold, possibleThreshold, smoothingAlpha, deadZone };
 }
 
 function saveSettings() {
   const settings = getSettings();
   localStorage.setItem(DETECTION_SETTINGS_STORAGE_KEY, JSON.stringify({
+    backendId: settings.backend.id,
     profileId: settings.profile.id,
     strongThreshold: settings.strongThreshold,
     possibleThreshold: settings.possibleThreshold,
@@ -202,7 +259,9 @@ function loadSettings() {
   } catch (err) {
     console.warn('Failed to parse saved detection settings.', err);
   }
+  const backend = getDetectBackend((saved && saved.backendId) || DEFAULT_DETECT_BACKEND_ID);
   const profile = getProfile(saved && saved.profileId);
+  if (detectBackendSelect) detectBackendSelect.value = backend.id;
   if (detectProfileSelect) detectProfileSelect.value = profile.id;
   if (strongThresholdInput) strongThresholdInput.value = String(clamp(saved && saved.strongThreshold, 0.05, 0.99, 0.3));
   if (possibleThresholdInput) possibleThresholdInput.value = String(clamp(saved && saved.possibleThreshold, 0.01, 0.95, 0.12));
@@ -427,6 +486,7 @@ function clearTargetTelemetry() {
     simPanLabel: 'HOLD',
     simTiltLabel: 'HOLD',
     loopMs: 0,
+    missedFrames: 0,
   });
   updateOperatorAssistReadout();
 }
@@ -472,6 +532,35 @@ function computeMetrics(det) {
   const normX = screenCenterX ? Math.max(-1, Math.min(1, deltaX / screenCenterX)) : 0;
   const normY = screenCenterY ? Math.max(-1, Math.min(1, deltaY / screenCenterY)) : 0;
   return { x, y, w, h, centerX, centerY, deltaX, deltaY, normX, normY };
+}
+
+function getDetectionThresholds(className, metrics, settings) {
+  const base = {
+    possible: settings.possibleThreshold,
+    strong: settings.strongThreshold,
+  };
+  if (!(hasTrackLock() && className === trackingState.label && isNearLockedTarget(metrics))) return base;
+  return {
+    possible: Math.max(TRACK_LOCK_MIN_SCORE, base.possible * TRACK_LOCK_THRESHOLD_FACTOR),
+    strong: Math.max(TRACK_LOCK_MIN_SCORE, base.strong * TRACK_LOCK_THRESHOLD_FACTOR),
+  };
+}
+
+function buildDetections(predictions, settings) {
+  const labels = new Set(getProfileLabels(settings.profile, settings.backend.id));
+  return predictions
+    .filter((p) => (p.score || 0) >= DRAW_THRESHOLD)
+    .map((p) => {
+      const metrics = computeMetrics(p);
+      const thresholds = getDetectionThresholds(p.class, metrics, settings);
+      const score = p.score || 0;
+      return {
+        ...p,
+        metrics,
+        isCandidate: labels.has(p.class) && score >= thresholds.possible,
+        isStrong: labels.has(p.class) && score >= thresholds.strong,
+      };
+    });
 }
 
 function chooseCandidate(candidates) {
@@ -625,7 +714,138 @@ function pushTelemetry(entry) {
   while (sessionTelemetry.length > MAX_TELEMETRY) sessionTelemetry.shift();
 }
 
-async function ensureDetectModel() {
+async function yieldToBrowser() {
+  if (window.tf && typeof tf.nextFrame === 'function') {
+    try {
+      await tf.nextFrame();
+      return;
+    } catch (err) {
+      console.warn('tf.nextFrame() failed, falling back to requestAnimationFrame.', err);
+    }
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function ensureDetectSourceSurface() {
+  if (!detectSourceCanvas) detectSourceCanvas = document.createElement('canvas');
+  if (!detectSourceCtx && detectSourceCanvas) detectSourceCtx = detectSourceCanvas.getContext('2d', { alpha: false });
+  return detectSourceCanvas && detectSourceCtx ? { canvas: detectSourceCanvas, ctx: detectSourceCtx } : null;
+}
+
+function getDetectionSource() {
+  if (!(feedImg && feedImg.naturalWidth && feedImg.naturalHeight)) return null;
+  const downscale = Math.min(
+    1,
+    DETECT_MAX_SOURCE_WIDTH / feedImg.naturalWidth,
+    DETECT_MAX_SOURCE_HEIGHT / feedImg.naturalHeight
+  );
+  if (downscale >= 0.999) return { source: feedImg, scaleX: 1, scaleY: 1 };
+  const surface = ensureDetectSourceSurface();
+  if (!surface) return { source: feedImg, scaleX: 1, scaleY: 1 };
+  const width = Math.max(1, Math.round(feedImg.naturalWidth * downscale));
+  const height = Math.max(1, Math.round(feedImg.naturalHeight * downscale));
+  if (surface.canvas.width !== width) surface.canvas.width = width;
+  if (surface.canvas.height !== height) surface.canvas.height = height;
+  surface.ctx.clearRect(0, 0, width, height);
+  surface.ctx.drawImage(feedImg, 0, 0, width, height);
+  return {
+    source: surface.canvas,
+    scaleX: feedImg.naturalWidth / width,
+    scaleY: feedImg.naturalHeight / height,
+  };
+}
+
+function rescalePredictionBBox(prediction, scaleX, scaleY) {
+  if (!prediction || !Array.isArray(prediction.bbox) || prediction.bbox.length < 4) return prediction;
+  const [x, y, w, h] = prediction.bbox;
+  return {
+    ...prediction,
+    bbox: [x * scaleX, y * scaleY, w * scaleX, h * scaleY],
+  };
+}
+
+function preprocessDroneDetectSource(modelWidth, modelHeight) {
+  const surface = ensureDetectSourceSurface();
+  if (!surface || !feedImg || !feedImg.naturalWidth || !feedImg.naturalHeight) return null;
+  const sourceWidth = feedImg.naturalWidth;
+  const sourceHeight = feedImg.naturalHeight;
+  const scale = Math.min(modelWidth / sourceWidth, modelHeight / sourceHeight);
+  const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const padX = Math.floor((modelWidth - drawWidth) / 2);
+  const padY = Math.floor((modelHeight - drawHeight) / 2);
+  if (surface.canvas.width !== modelWidth) surface.canvas.width = modelWidth;
+  if (surface.canvas.height !== modelHeight) surface.canvas.height = modelHeight;
+  surface.ctx.clearRect(0, 0, modelWidth, modelHeight);
+  surface.ctx.fillStyle = '#727272';
+  surface.ctx.fillRect(0, 0, modelWidth, modelHeight);
+  surface.ctx.drawImage(feedImg, padX, padY, drawWidth, drawHeight);
+  const imageData = surface.ctx.getImageData(0, 0, modelWidth, modelHeight).data;
+  const channelSize = modelWidth * modelHeight;
+  const input = new Float32Array(channelSize * 3);
+  for (let pixel = 0, i = 0; i < imageData.length; i += 4, pixel += 1) {
+    input[pixel] = imageData[i] / 255;
+    input[channelSize + pixel] = imageData[i + 1] / 255;
+    input[channelSize * 2 + pixel] = imageData[i + 2] / 255;
+  }
+  return { input, scale, padX, padY };
+}
+
+function clampBboxToFeed(bbox) {
+  if (!feedImg || !feedImg.naturalWidth || !feedImg.naturalHeight || !Array.isArray(bbox) || bbox.length < 4) return bbox;
+  const [rawX, rawY, rawW, rawH] = bbox;
+  const x = Math.max(0, Math.min(feedImg.naturalWidth, rawX));
+  const y = Math.max(0, Math.min(feedImg.naturalHeight, rawY));
+  const w = Math.max(0, Math.min(feedImg.naturalWidth - x, rawW));
+  const h = Math.max(0, Math.min(feedImg.naturalHeight - y, rawH));
+  return [x, y, w, h];
+}
+
+function normalizeDroneModelPrediction(data, offset, prepared) {
+  if (!prepared || !Number.isFinite(prepared.scale) || prepared.scale <= 0) return null;
+  const x1 = Number(data[offset]);
+  const y1 = Number(data[offset + 1]);
+  const x2 = Number(data[offset + 2]);
+  const y2 = Number(data[offset + 3]);
+  const scoreRaw = Number(data[offset + 4]);
+  const classIdRaw = Number(data[offset + 5]);
+  const score = Number.isFinite(scoreRaw) ? scoreRaw : 0;
+  const classId = Number.isFinite(classIdRaw) ? Math.round(classIdRaw) : -1;
+  const className = DRONE_MODEL_LABELS[classId] || `class_${classId}`;
+  const width = Math.max(0, (x2 - x1) / prepared.scale);
+  const height = Math.max(0, (y2 - y1) / prepared.scale);
+  const bbox = clampBboxToFeed([
+    (x1 - prepared.padX) / prepared.scale,
+    (y1 - prepared.padY) / prepared.scale,
+    width,
+    height,
+  ]);
+  return {
+    class: className,
+    score,
+    classId,
+    bbox,
+  };
+}
+
+async function ensureDetectBackend() {
+  if (detectBackendReady || !window.tf) return;
+  try {
+    await tf.ready();
+    const currentBackend = typeof tf.getBackend === 'function' ? tf.getBackend() : '';
+    if (currentBackend !== 'webgl' && typeof tf.findBackend === 'function' && tf.findBackend('webgl')) {
+      await tf.setBackend('webgl');
+      await tf.ready();
+    }
+    detectBackendReady = true;
+    if (typeof tf.getBackend === 'function') logConsole(`TF backend: ${tf.getBackend()}`, 'text-muted');
+  } catch (err) {
+    detectBackendReady = true;
+    console.warn('Failed to switch TensorFlow backend.', err);
+  }
+}
+
+async function ensureCocoDetectModel() {
   if (detectModelReady && detectModel) return detectModel;
   if (!window.cocoSsd) {
     setDetectStatus('Detect: model missing', 'bg-danger');
@@ -634,6 +854,7 @@ async function ensureDetectModel() {
   }
   setDetectStatus('Detect: loading', 'bg-warning');
   try {
+    await ensureDetectBackend();
     detectModel = await cocoSsd.load();
     detectModelReady = true;
     setDetectStatus('Detect: ready', 'bg-success');
@@ -647,6 +868,77 @@ async function ensureDetectModel() {
   }
 }
 
+async function ensureDroneDetectSession() {
+  if (droneDetectSessionReady && droneDetectSession) return droneDetectSession;
+  if (!(window.ort && ort.InferenceSession && ort.Tensor)) {
+    setDetectStatus('Detect: model missing', 'bg-danger');
+    logConsole('ONNX Runtime Web support missing.', 'text-danger');
+    return null;
+  }
+  setDetectStatus('Detect: loading', 'bg-warning');
+  try {
+    if (ort.env && ort.env.wasm) ort.env.wasm.numThreads = 1;
+    try {
+      droneDetectSession = await ort.InferenceSession.create(DRONE_MODEL_URL, {
+        executionProviders: ['webgpu', 'wasm'],
+        graphOptimizationLevel: 'all',
+      });
+    } catch (primaryErr) {
+      console.warn('AeroYOLO WebGPU session failed, retrying with WASM only.', primaryErr);
+      droneDetectSession = await ort.InferenceSession.create(DRONE_MODEL_URL, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      });
+    }
+    droneDetectSessionReady = true;
+    setDetectStatus('Detect: ready', 'bg-success');
+    logConsole('AeroYOLO model loaded.', 'text-success');
+    return droneDetectSession;
+  } catch (err) {
+    console.error('AeroYOLO model load failed', err);
+    setDetectStatus('Detect: load failed', 'bg-danger');
+    logConsole('AeroYOLO model load failed.', 'text-danger');
+    return null;
+  }
+}
+
+async function detectWithCoco() {
+  const model = await ensureCocoDetectModel();
+  if (!model) return [];
+  const detectionSource = getDetectionSource();
+  if (!detectionSource) return [];
+  const rawPredictions = await model.detect(detectionSource.source);
+  return (detectionSource.scaleX === 1 && detectionSource.scaleY === 1)
+    ? rawPredictions
+    : rawPredictions.map((prediction) => rescalePredictionBBox(prediction, detectionSource.scaleX, detectionSource.scaleY));
+}
+
+async function detectWithAeroYolo() {
+  const session = await ensureDroneDetectSession();
+  if (!session) return [];
+  const inputName = session.inputNames && session.inputNames[0] ? session.inputNames[0] : 'images';
+  const outputName = session.outputNames && session.outputNames[0] ? session.outputNames[0] : 'output0';
+  const inputMeta = session.inputMetadata && session.inputMetadata[inputName] ? session.inputMetadata[inputName] : null;
+  const dims = inputMeta && Array.isArray(inputMeta.dimensions) ? inputMeta.dimensions : [1, 3, 640, 640];
+  const modelHeight = Number(dims[2]) || 640;
+  const modelWidth = Number(dims[3]) || 640;
+  const prepared = preprocessDroneDetectSource(modelWidth, modelHeight);
+  if (!prepared) return [];
+  const tensor = new ort.Tensor('float32', prepared.input, [1, 3, modelHeight, modelWidth]);
+  const result = await session.run({ [inputName]: tensor });
+  const outputTensor = result && result[outputName] ? result[outputName] : null;
+  if (!outputTensor || !outputTensor.data || !Array.isArray(outputTensor.dims)) return [];
+  const rows = outputTensor.dims[1] || 0;
+  const stride = outputTensor.dims[2] || 6;
+  const predictions = [];
+  for (let i = 0; i < rows; i += 1) {
+    const offset = i * stride;
+    const prediction = normalizeDroneModelPrediction(outputTensor.data, offset, prepared);
+    if (prediction) predictions.push(prediction);
+  }
+  return predictions;
+}
+
 async function runDetection() {
   if (isDetecting || !feedImg || !feedImg.src || feedImg.classList.contains('d-none')) return;
   if (!feedImg.complete || feedImg.naturalWidth === 0) return;
@@ -655,22 +947,14 @@ async function runDetection() {
   try {
     const settings = getSettings();
     setProfileStatus(settings.profile.id);
-    const model = await ensureDetectModel();
-    if (!model) return;
-    const labels = new Set(settings.profile.labels);
-    const predictions = await model.detect(feedImg);
-    const detections = predictions.filter((p) => (p.score || 0) >= DRAW_THRESHOLD).map((p) => ({
-      ...p,
-      metrics: computeMetrics(p),
-      isCandidate: labels.has(p.class) && (p.score || 0) >= settings.possibleThreshold,
-      isStrong: labels.has(p.class) && (p.score || 0) >= settings.strongThreshold,
-    }));
+    const predictions = settings.backend.id === 'aeroyolo' ? await detectWithAeroYolo() : await detectWithCoco();
+    const detections = buildDetections(predictions, settings);
     const selected = chooseCandidate(detections.filter((det) => det.isCandidate && det.metrics));
     const loopMs = performance.now() - startedAt;
     if (!selected) {
       trackingState.missedFrames += 1;
-      drawScene(detections, null);
       if (trackingState.missedFrames >= LOST_LIMIT) clearTargetTelemetry();
+      drawScene(detections, null);
       setReadout(loopTimeVal, loopMs.toFixed(1));
       setDetectStatus(predictions.length ? `Detect: clear (${predictions.reduce((a, b) => (a.score || 0) > (b.score || 0) ? a : b).class})` : 'Detect: clear', 'bg-success');
       setSafetyState('ok', 'Safe');
@@ -678,7 +962,7 @@ async function runDetection() {
       if (lastDetectState !== 'clear') logConsole('No configured air target detected.', 'text-success');
       lastDetectState = 'clear';
       lastDetectLabel = '';
-      pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: 'clear', profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), predictionCount: predictions.length });
+      pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: 'clear', backend: settings.backend.id, profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), predictionCount: predictions.length });
       return;
     }
     updateSelectedTarget(selected, settings, loopMs);
@@ -697,7 +981,7 @@ async function runDetection() {
       lastDetectState = 'possible';
     }
     lastDetectLabel = labelText;
-    pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: selected.isStrong ? 'target' : 'possible', profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), label: selected.class, score: Number((selected.score || 0).toFixed(4)), rawCenter: { x: Number(trackingState.rawCenterX.toFixed(2)), y: Number(trackingState.rawCenterY.toFixed(2)) }, filteredCenter: { x: Number(trackingState.filteredCenterX.toFixed(2)), y: Number(trackingState.filteredCenterY.toFixed(2)) }, filteredDelta: { x: Number(trackingState.filteredDeltaX.toFixed(2)), y: Number(trackingState.filteredDeltaY.toFixed(2)), normX: Number(trackingState.filteredNormX.toFixed(4)), normY: Number(trackingState.filteredNormY.toFixed(4)) }, sim: { pan: trackingState.simPan, tilt: trackingState.simTilt, panLabel: trackingState.simPanLabel, tiltLabel: trackingState.simTiltLabel } });
+    pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: selected.isStrong ? 'target' : 'possible', backend: settings.backend.id, profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), label: selected.class, score: Number((selected.score || 0).toFixed(4)), rawCenter: { x: Number(trackingState.rawCenterX.toFixed(2)), y: Number(trackingState.rawCenterY.toFixed(2)) }, filteredCenter: { x: Number(trackingState.filteredCenterX.toFixed(2)), y: Number(trackingState.filteredCenterY.toFixed(2)) }, filteredDelta: { x: Number(trackingState.filteredDeltaX.toFixed(2)), y: Number(trackingState.filteredDeltaY.toFixed(2)), normX: Number(trackingState.filteredNormX.toFixed(4)), normY: Number(trackingState.filteredNormY.toFixed(4)) }, sim: { pan: trackingState.simPan, tilt: trackingState.simTilt, panLabel: trackingState.simPanLabel, tiltLabel: trackingState.simTiltLabel } });
   } catch (err) {
     console.error('Detection failed', err);
     const text = err && err.message ? err.message : 'check CORS / proxy / stream';
@@ -710,6 +994,7 @@ async function runDetection() {
     lastDetectLabel = text;
     pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: 'error', error: text });
   } finally {
+    await yieldToBrowser();
     isDetecting = false;
   }
 }
@@ -803,7 +1088,7 @@ function scheduleNextDetection(delay) {
   detectTimer = setTimeout(async () => {
     const startedAt = performance.now();
     await runDetection();
-    scheduleNextDetection(Math.max(0, DETECT_INTERVAL_MS - (performance.now() - startedAt)));
+    scheduleNextDetection(Math.max(DETECT_MIN_IDLE_MS, DETECT_INTERVAL_MS - (performance.now() - startedAt)));
   }, Math.max(0, delay || 0));
 }
 
@@ -933,11 +1218,21 @@ function init() {
       if (urlInput && urlInput.value.trim()) setStream(urlInput.value.trim());
     });
   }
-  [detectProfileSelect, strongThresholdInput, possibleThresholdInput, smoothingInput, deadZoneInput].filter(Boolean).forEach((el) => {
+  [detectBackendSelect, detectProfileSelect].filter(Boolean).forEach((el) => {
+    el.addEventListener('change', () => {
+      saveSettings();
+      clearTargetTelemetry();
+      lastDetectState = '';
+      lastDetectLabel = '';
+      const s = getSettings();
+      logConsole(`Detection mode updated: ${s.backend.label}, ${s.profile.label}`, 'text-info');
+    });
+  });
+  [strongThresholdInput, possibleThresholdInput, smoothingInput, deadZoneInput].filter(Boolean).forEach((el) => {
     el.addEventListener('change', () => {
       saveSettings();
       const s = getSettings();
-      logConsole(`Detection settings updated: ${s.profile.label}, strong=${s.strongThreshold.toFixed(2)}, possible=${s.possibleThreshold.toFixed(2)}, alpha=${s.smoothingAlpha.toFixed(2)}, deadZone=${s.deadZone.toFixed(2)}`, 'text-info');
+      logConsole(`Detection settings updated: ${s.backend.label}, ${s.profile.label}, strong=${s.strongThreshold.toFixed(2)}, possible=${s.possibleThreshold.toFixed(2)}, alpha=${s.smoothingAlpha.toFixed(2)}, deadZone=${s.deadZone.toFixed(2)}`, 'text-info');
     });
   });
   if (downloadTelemetryBtn) downloadTelemetryBtn.addEventListener('click', downloadTelemetry);
