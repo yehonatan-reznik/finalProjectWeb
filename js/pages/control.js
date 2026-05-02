@@ -5,7 +5,6 @@ const placeholder = $('cameraPlaceholder');
 const urlInput = $('cameraUrlInput');
 const connectBtn = $('cameraConnectBtn');
 const statusLabel = $('cameraStatus');
-const proxyToggle = $('proxyToggle');
 const esp32IpInput = $('esp32IpInput');
 const esp32ConnectBtn = $('esp32ConnectBtn');
 const btnUp = $('btnUp');
@@ -62,10 +61,8 @@ const calibrationButtonsVal = $('calibrationButtonsVal');
 
 const STORAGE_KEY = 'skyshield_camera_base_url';
 const ESP32_STORAGE_KEY = 'esp32_ip';
-const PROXY_ENABLED_STORAGE_KEY = 'skyshield_camera_proxy_enabled';
 const DETECTION_SETTINGS_STORAGE_KEY = 'skyshield_detection_settings_v2';
 const ASSIST_CALIBRATION_STORAGE_KEY = 'skyshield_assist_calibration_v1';
-const DEFAULT_PROXY_URL = 'http://127.0.0.1:3001/proxy?url=';
 const DRONE_MODEL_URL = 'models/aeroyolo.onnx';
 const DEFAULT_DETECT_BACKEND_ID = 'aeroyolo';
 const DETECT_INTERVAL_MS = 180;
@@ -1002,9 +999,9 @@ async function runDetection() {
     pushTelemetry({ frame: ++frameCounter, at: new Date().toISOString(), state: selected.isStrong ? 'target' : 'possible', backend: settings.backend.id, profile: settings.profile.id, loopMs: Number(loopMs.toFixed(2)), label: selected.class, score: Number((selected.score || 0).toFixed(4)), rawCenter: { x: Number(trackingState.rawCenterX.toFixed(2)), y: Number(trackingState.rawCenterY.toFixed(2)) }, filteredCenter: { x: Number(trackingState.filteredCenterX.toFixed(2)), y: Number(trackingState.filteredCenterY.toFixed(2)) }, filteredDelta: { x: Number(trackingState.filteredDeltaX.toFixed(2)), y: Number(trackingState.filteredDeltaY.toFixed(2)), normX: Number(trackingState.filteredNormX.toFixed(4)), normY: Number(trackingState.filteredNormY.toFixed(4)) }, sim: { pan: trackingState.simPan, tilt: trackingState.simTilt, panLabel: trackingState.simPanLabel, tiltLabel: trackingState.simTiltLabel } });
   } catch (err) {
     console.error('Detection failed', err);
-    const text = err && err.message ? err.message : 'check CORS / proxy / stream';
+    const text = err && err.message ? err.message : 'check camera address / stream';
     const corsBlocked = /tainted canvases|cross-origin|cross origin/i.test(text);
-    setDetectStatus(corsBlocked ? 'Detect: blocked (CORS / proxy)' : 'Detect: error', corsBlocked ? 'bg-warning text-dark' : 'bg-danger');
+    setDetectStatus(corsBlocked ? 'Detect: blocked (CORS)' : 'Detect: error', corsBlocked ? 'bg-warning text-dark' : 'bg-danger');
     setSafetyState('warn', corsBlocked ? 'Detection blocked' : 'Scanning');
     clearTargetTelemetry();
     if (lastDetectState !== 'error' || lastDetectLabel !== text) logConsole(`Detection error: ${text}`, 'text-warning');
@@ -1022,14 +1019,6 @@ function normalizeBaseUrl(raw) {
   if (!url) return '';
   if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
   return url.replace(/\/+$/, '');
-}
-
-function isProxyEnabled() {
-  return proxyToggle ? proxyToggle.checked : localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
-}
-
-function buildStreamRequestUrl(url) {
-  return isProxyEnabled() ? DEFAULT_PROXY_URL + encodeURIComponent(url) : url;
 }
 
 function buildStreamCandidates(normalized) {
@@ -1065,18 +1054,18 @@ function setStream(baseUrl) {
     return '';
   }
   configureFeedCorsMode();
-  streamCandidates = buildStreamCandidates(normalized).map((directUrl) => ({ directUrl, requestUrl: buildStreamRequestUrl(directUrl) }));
+  streamCandidates = buildStreamCandidates(normalized);
   streamCandidateIndex = 0;
   const first = streamCandidates[0];
   if (!first) return '';
-  feedImg.src = first.requestUrl;
+  feedImg.src = first;
   feedImg.classList.remove('d-none');
   if (placeholder) placeholder.classList.add('d-none');
-  setReadout(statusLabel, `Streaming from ${first.directUrl}${isProxyEnabled() ? ' (via proxy)' : ''}`);
+  setReadout(statusLabel, `Streaming from ${first}`);
   setDetectStatus('Detect: waiting', 'bg-secondary');
   setSafetyState('warn', 'Scanning');
   setMode('Observe');
-  logConsole(`Attempting camera stream: ${first.directUrl}`, 'text-muted');
+  logConsole(`Attempting camera stream: ${first}`, 'text-muted');
   localStorage.setItem(STORAGE_KEY, normalized);
   return normalized;
 }
@@ -1227,15 +1216,9 @@ function init() {
   clearTargetTelemetry();
   loadSettings();
   loadCalibration();
+  localStorage.removeItem('skyshield_camera_proxy_enabled');
   updateCalibrationReadouts();
   updateOperatorAssistReadout();
-  if (proxyToggle) {
-    proxyToggle.checked = localStorage.getItem(PROXY_ENABLED_STORAGE_KEY) === '1';
-    proxyToggle.addEventListener('change', () => {
-      localStorage.setItem(PROXY_ENABLED_STORAGE_KEY, proxyToggle.checked ? '1' : '0');
-      if (urlInput && urlInput.value.trim()) setStream(urlInput.value.trim());
-    });
-  }
   [detectBackendSelect, detectProfileSelect].filter(Boolean).forEach((el) => {
     el.addEventListener('change', () => {
       saveSettings();
@@ -1336,13 +1319,13 @@ function init() {
       if (streamCandidates.length && streamCandidateIndex < streamCandidates.length - 1) {
         streamCandidateIndex += 1;
         const next = streamCandidates[streamCandidateIndex];
-        setReadout(statusLabel, `Retrying stream via ${next.directUrl}${isProxyEnabled() ? ' (via proxy)' : ''}`);
-        logConsole(`Stream retry: ${next.directUrl}`, 'text-warning');
-        feedImg.src = next.requestUrl;
+        setReadout(statusLabel, `Retrying stream via ${next}`);
+        logConsole(`Stream retry: ${next}`, 'text-warning');
+        feedImg.src = next;
         return;
       }
-      setReadout(statusLabel, isProxyEnabled() ? 'Stream error - check camera address or proxy status' : 'Stream error - check address / CORS / path');
-      if (!isProxyEnabled()) logConsole('Tip: if the stream opens in a tab but inference fails, confirm camera CORS headers or use proxy mode.', 'text-warning');
+      setReadout(statusLabel, 'Stream error - check address / CORS / path');
+      logConsole('Tip: if the stream opens in a tab but inference fails, confirm the camera still sends CORS headers.', 'text-warning');
       logConsole('Stream failed for all candidates.', 'text-danger');
       feedImg.classList.add('d-none');
       if (placeholder) placeholder.classList.remove('d-none');

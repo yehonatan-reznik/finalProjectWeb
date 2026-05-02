@@ -1,18 +1,18 @@
 # SkyShield Demo Repo
 
-This repo now contains the full demo project:
+This repo contains the current browser-based ground control demo:
 
-- browser UI and local detection logic
-- ESP32-CAM streaming firmware
-- separate ESP32 servo/laser controller firmware
-- local test images and source documents
+- live ESP32-CAM streaming in the browser
+- local AeroYOLO ONNX detection on the operator PC
+- separate ESP32 controller firmware for servos and laser
+- bench-test assets, docs, and reference material
 
 ## Current status
 
-- Detection in the browser is working.
-- The control page now shows filtered center offsets and simulated pan/tilt output.
-- The control page now also includes manual-assist move hints and servo-calibration tools for bench testing.
-- The detector still uses generic COCO-SSD classes, so this remains a demo and not a validated real-drone detector.
+- Detection in the browser is working with `AeroYOLO` as the default backend.
+- `COCO-SSD` remains available as a generic fallback inside the Detection Lab.
+- The control page shows target center, filtered offsets, manual move hints, and session telemetry.
+- Stream handling is direct browser-to-camera HTTP with no local proxy in the standard setup.
 
 ## Repo layout
 
@@ -27,9 +27,9 @@ code/
   js/
     auth.js
     pages/
+  models/
+    aeroyolo.onnx
   object-detection/
-  tools/
-    camera-proxy.mjs
   firmware/
     README.md
     ai_thinker_cam_http80/
@@ -52,15 +52,12 @@ code/
 
 Open `control.html` through a local server such as VS Code Live Server.
 
-If the browser blocks stream access because of CORS, enable proxy mode in the UI and run:
+The current ESP32-CAM firmware already sends browser-friendly CORS headers, so the expected path is direct streaming from the browser without a local proxy layer.
 
-```powershell
-node tools/camera-proxy.mjs
-```
+## Detection and operator assist
 
-## Manual assist and calibration
-
-- `Operator Assist` turns the detection offset into manual guidance such as `PAN RIGHT_MED` or `TILT UP_SMALL`.
+- `AeroYOLO` is the default browser detector for `aircraft`, `drone`, and `helicopter`.
+- `Operator Assist` turns the target offset into manual guidance such as `LEFT`, `RIGHT`, `UP`, or `DOWN`.
 - `Servo Calibration` lets you send small `X` and `Y` nudges, record what `X+` and `Y+` physically do, and derive which axis is pan vs tilt.
 - This remains manual-assist only. No automatic servo motion is generated from live detections.
 
