@@ -1,4 +1,5 @@
-﻿(function () {
+// Logs page script: protects the page and filters the static session timeline by search text and category.
+(function () {
   'use strict';
 
   if (window.SkyShieldAuth) {

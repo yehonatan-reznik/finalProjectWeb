@@ -1,4 +1,5 @@
-﻿(function () {
+// Login page script: redirects authenticated users, submits credentials, and keeps the login card state in sync.
+(function () {
   'use strict';
 
   if (!window.SkyShieldAuth) {
@@ -36,7 +37,7 @@
   });
 
   async function handleLogin() {
-    setLoading(true, 'Authenticatingג€¦');
+    setLoading(true, 'Authenticating...');
     const result = await window.SkyShieldAuth.loginWithEmail(emailInput.value, passwordInput.value);
     setLoading(false);
 

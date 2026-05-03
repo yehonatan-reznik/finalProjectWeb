@@ -1,18 +1,20 @@
 <!doctype html>
+<!-- Purpose: structured request page for reporting UI issues, detector tuning requests, firmware notes, and workflow feedback. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SkyShield GCS - Request Form</title>
+  <title>SkyShield Control - Request Form</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
-  <link href="css/style.css" rel="stylesheet" />
+  <link href="../css/style.css" rel="stylesheet" />
 </head>
 <body>
+  <!-- Shared top navigation keeps change requests inside the same visual workspace as control, logs, and manual. -->
   <nav class="navbar navbar-dark navbar-expand-lg fixed-top">
     <div class="container-fluid">
       <a class="navbar-brand d-flex align-items-center" href="control.html">
-        <i class="bi bi-bullseye me-2 text-hud"></i> SkyShield GCS
+        <i class="bi bi-bullseye me-2 text-hud"></i> SkyShield Control
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain" aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
@@ -28,29 +30,30 @@
     </div>
   </nav>
 
-  <main class="container pt-4 mt-5 page-stack">
+  <!-- This page follows the same hero and main-content/side-rail layout as the other secondary pages. -->
+  <main class="container-fluid page-shell page-shell-wide pt-4 mt-5 page-stack">
     <section class="card card-hud page-hero mb-4">
       <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3">
         <div>
-          <div class="hero-kicker">Feedback And Change Requests</div>
-          <h1 class="h3 text-hud mb-2">System Request Form</h1>
-          <p class="text-muted mb-0">Use this form for UI fixes, detector tuning requests, controller notes, or workflow feedback from bench testing. Keep it short, concrete, and tied to what you saw in the live page or logs.</p>
+          <div class="hero-kicker">Requests</div>
+          <h1 class="h3 text-hud mb-2">Request Form</h1>
+          <p class="text-muted mb-0">Report UI, detection, controller, or workflow issues from testing.</p>
         </div>
         <div class="chip-row">
           <span class="support-chip">AeroYOLO</span>
           <span class="support-chip">Logging</span>
           <span class="support-chip">Operator Assist</span>
-          <span class="support-chip">Bench Calibration</span>
         </div>
       </div>
     </section>
 
     <div class="row g-4">
-      <div class="col-lg-8">
+      <div class="col-12">
+        <!-- The form is split into numbered blocks so the request structure is obvious in code and on screen. -->
         <div class="card card-hud">
           <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
             <span class="fw-semibold"><i class="bi bi-journal-plus me-2"></i>Submit Change Request</span>
-            <span class="small text-muted">Best results come from one issue per form</span>
+            <span class="small text-muted">One issue per form</span>
           </div>
           <div class="card-body">
             <form action="#" method="post" class="d-grid gap-3">
@@ -60,7 +63,7 @@
                   <div class="col-12">
                     <label class="form-label" for="requestTitle">Request title</label>
                     <input id="requestTitle" name="requestTitle" type="text" class="form-control form-control-hud" placeholder="e.g. tighten drone log wording on target detect" required />
-                    <div class="form-text text-muted">Write the change in one line before the longer explanation.</div>
+                    <div class="form-text text-muted">Use a short, clear title.</div>
                   </div>
                   <div class="col-12">
                     <label class="form-label" for="requestDetail">Detailed description</label>
@@ -99,33 +102,41 @@
                 <div class="section-title">3. What should be included?</div>
                 <div class="row g-3">
                   <div class="col-md-6">
-                    <label class="form-label d-block">Useful attachments</label>
-                    <div class="form-check">
-                      <input id="assetTelemetry" name="assets" class="form-check-input" type="checkbox" value="telemetry" />
-                      <label class="form-check-label" for="assetTelemetry">Session telemetry export</label>
-                    </div>
-                    <div class="form-check">
-                      <input id="assetImagery" name="assets" class="form-check-input" type="checkbox" value="imagery" />
-                      <label class="form-check-label" for="assetImagery">Frame or screenshot reference</label>
-                    </div>
-                    <div class="form-check">
-                      <input id="assetSim" name="assets" class="form-check-input" type="checkbox" value="simulation" />
-                      <label class="form-check-label" for="assetSim">Manual reproduction steps</label>
+                    <div class="option-group">
+                      <label class="form-label d-block">Useful attachments</label>
+                      <div class="form-check-stack">
+                        <div class="form-check form-check-card">
+                          <input id="assetTelemetry" name="assets" class="form-check-input" type="checkbox" value="telemetry" />
+                          <label class="form-check-label" for="assetTelemetry">Session telemetry export</label>
+                        </div>
+                        <div class="form-check form-check-card">
+                          <input id="assetImagery" name="assets" class="form-check-input" type="checkbox" value="imagery" />
+                          <label class="form-check-label" for="assetImagery">Frame or screenshot reference</label>
+                        </div>
+                        <div class="form-check form-check-card">
+                          <input id="assetSim" name="assets" class="form-check-input" type="checkbox" value="simulation" />
+                          <label class="form-check-label" for="assetSim">Manual reproduction steps</label>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div class="col-md-6">
-                    <label class="form-label d-block">Requested follow-up</label>
-                    <div class="form-check">
-                      <input id="serviceTraining" name="services" class="form-check-input" type="checkbox" value="training" />
-                      <label class="form-check-label" for="serviceTraining">UI or workflow adjustment</label>
-                    </div>
-                    <div class="form-check">
-                      <input id="serviceAudit" name="services" class="form-check-input" type="checkbox" value="audit" />
-                      <label class="form-check-label" for="serviceAudit">Detection threshold review</label>
-                    </div>
-                    <div class="form-check">
-                      <input id="serviceFirmware" name="services" class="form-check-input" type="checkbox" value="firmware" />
-                      <label class="form-check-label" for="serviceFirmware">Controller or firmware check</label>
+                    <div class="option-group">
+                      <label class="form-label d-block">Requested follow-up</label>
+                      <div class="form-check-stack">
+                        <div class="form-check form-check-card">
+                          <input id="serviceTraining" name="services" class="form-check-input" type="checkbox" value="training" />
+                          <label class="form-check-label" for="serviceTraining">UI or workflow adjustment</label>
+                        </div>
+                        <div class="form-check form-check-card">
+                          <input id="serviceAudit" name="services" class="form-check-input" type="checkbox" value="audit" />
+                          <label class="form-check-label" for="serviceAudit">Detection threshold review</label>
+                        </div>
+                        <div class="form-check form-check-card">
+                          <input id="serviceFirmware" name="services" class="form-check-input" type="checkbox" value="firmware" />
+                          <label class="form-check-label" for="serviceFirmware">Controller or firmware check</label>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -137,7 +148,7 @@
                   <div class="col-12">
                     <label class="form-label" for="attachments">Reference link</label>
                     <input id="attachments" name="attachments" type="url" class="form-control form-control-hud" placeholder="https://link-to-console-log-or-screenshot" />
-                    <div class="form-text text-muted">Optional. Add one direct link to the log, screenshot, or test note that best shows the issue.</div>
+                    <div class="form-text text-muted">Optional.</div>
                   </div>
                 </div>
               </div>
@@ -150,70 +161,37 @@
             </form>
           </div>
           <div class="card-footer small text-muted">
-            If the issue touches detection, include the exact label, confidence, and `x/y` values from the event console when possible.
+            Include the label, confidence, and `x/y` values when relevant.
           </div>
         </div>
       </div>
 
-      <div class="col-lg-4">
-        <div class="side-card-stack">
+      <div class="col-12">
+        <!-- Tips move below the form so the main request fields get the full page width. -->
+        <div class="support-grid">
           <div class="card card-hud">
             <div class="card-header fw-semibold">
-              <i class="bi bi-check2-square me-2"></i>What Makes A Good Request
+              <i class="bi bi-check2-square me-2"></i>Request Tips
             </div>
             <div class="card-body">
               <ul class="soft-list">
                 <li>
                   <strong>One issue at a time</strong>
-                  Split UI polish, detection quality, and controller behavior into separate requests when possible.
+                  Split UI, detection, and controller issues when possible.
                 </li>
                 <li>
                   <strong>Use live terms</strong>
-                  Copy the exact text from the console or status panel so the issue maps back to a real screen state.
+                  Copy the exact text from the console or status panel.
                 </li>
                 <li>
                   <strong>Show the failure</strong>
-                  A single screenshot or short log excerpt is usually better than a long description.
+                  A screenshot or short log excerpt is usually enough.
+                </li>
+                <li>
+                  <strong>Example</strong>
+                  "Target log says `x=412 y=167`, but the move wording should read `RIGHT / UP`."
                 </li>
               </ul>
-            </div>
-          </div>
-
-          <div class="card card-hud">
-            <div class="card-header fw-semibold">
-              <i class="bi bi-lightbulb me-2"></i>Example Request
-            </div>
-            <div class="card-body">
-              <div class="note-panel">
-                <div class="section-title">Example</div>
-                <p class="small text-muted mb-2">"AeroYOLO tracks the drone correctly, but the target log needs clearer move wording. On target detect the console showed `x=412 y=167` and the best operator hint would be `RIGHT / UP`."</p>
-                <p class="small text-muted mb-0">That is enough context to reproduce the issue and judge the result after the fix.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="card card-hud">
-            <div class="card-header fw-semibold">
-              <i class="bi bi-diagram-3 me-2"></i>Review Path
-            </div>
-            <div class="card-body">
-              <div class="metric-grid">
-                <div class="metric-card">
-                  <span class="metric-card-label">Step 1</span>
-                  <span class="metric-card-value">Reproduce</span>
-                  <span class="metric-card-note">Check control page and logs</span>
-                </div>
-                <div class="metric-card">
-                  <span class="metric-card-label">Step 2</span>
-                  <span class="metric-card-value">Patch</span>
-                  <span class="metric-card-note">UI, detector, or controller layer</span>
-                </div>
-                <div class="metric-card">
-                  <span class="metric-card-label">Step 3</span>
-                  <span class="metric-card-value">Verify</span>
-                  <span class="metric-card-note">Bench pass and GitHub push</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -221,16 +199,16 @@
     </div>
   </main>
 
-  <footer class="text-center text-muted small py-3">
-    <a class="link-hud me-3" href="logs.html"><i class="bi bi-journal-text me-1"></i>View Logs</a>
-    <a class="link-hud me-3" href="manual.html"><i class="bi bi-book me-1"></i>Operator Manual</a>
+  <footer class="text-center text-muted small py-3 footer-links">
+    <a class="link-hud" href="logs.html"><i class="bi bi-journal-text me-1"></i>View Logs</a>
+    <a class="link-hud" href="manual.html"><i class="bi bi-book me-1"></i>Operator Manual</a>
     <a class="link-hud" href="control.html"><i class="bi bi-speedometer2 me-1"></i>Control Panel</a>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/pages/form.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/pages/form.js"></script>
 </body>
 </html>

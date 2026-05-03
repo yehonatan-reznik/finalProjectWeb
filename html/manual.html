@@ -1,18 +1,20 @@
 <!doctype html>
+<!-- Purpose: operator reference page that explains the current browser workflow, safety expectations, and page controls. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SkyShield GCS - Operator Manual</title>
+  <title>SkyShield Control - Manual</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
-  <link href="css/style.css" rel="stylesheet" />
+  <link href="../css/style.css" rel="stylesheet" />
 </head>
 <body>
+  <!-- Shared top navigation keeps help and live operations inside one visual system. -->
   <nav class="navbar navbar-dark navbar-expand-lg fixed-top">
     <div class="container-fluid">
       <a class="navbar-brand d-flex align-items-center" href="control.html">
-        <i class="bi bi-bullseye me-2 text-hud"></i> SkyShield GCS
+        <i class="bi bi-bullseye me-2 text-hud"></i> SkyShield Control
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain" aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
@@ -28,76 +30,52 @@
     </div>
   </nav>
 
-  <main class="container pt-4 mt-5 page-stack">
+  <!-- This page mirrors the same hero and two-column rhythm used by the other support pages. -->
+  <main class="container-fluid page-shell pt-4 mt-5 page-stack">
     <section class="card card-hud page-hero mb-4">
       <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3">
         <div>
-          <div class="hero-kicker">Current Workflow</div>
-          <h1 class="h3 text-hud mb-2">Operator Manual</h1>
-          <p class="text-muted mb-0">This manual matches the current browser build: direct ESP32-CAM streaming, AeroYOLO as the default detector, manual operator assist, and no automatic servo fire control.</p>
+          <div class="hero-kicker">Quick Reference</div>
+          <h1 class="h3 text-hud mb-2">Manual</h1>
+          <p class="text-muted mb-0">Fast guidance for stream setup, manual control, and safe shutdown.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-          <a href="control.html" class="btn btn-outline-success btn-sm"><i class="bi bi-speedometer2 me-1"></i>Open Control</a>
-          <a href="logs.html" class="btn btn-outline-light btn-sm"><i class="bi bi-journal-text me-1"></i>Read Logs</a>
+          <a href="control.html" class="btn btn-outline-success btn-sm"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+          <a href="logs.html" class="btn btn-outline-light btn-sm"><i class="bi bi-journal-text me-1"></i>Logs</a>
         </div>
       </div>
     </section>
 
     <div class="row g-4">
       <div class="col-lg-4">
+        <!-- The left rail turns the manual into a quick-start sequence plus a compact safety checklist. -->
         <div class="manual-step-grid">
           <article class="manual-step-card">
             <div class="manual-step-icon"><i class="bi bi-camera-video"></i></div>
             <div>
               <h3>1. Connect the feed</h3>
-              <p>Paste the ESP32-CAM stream URL, confirm the live image appears, and verify the page stays on the direct browser stream path.</p>
+              <p>Paste the camera URL and confirm the live image appears.</p>
             </div>
           </article>
           <article class="manual-step-card">
             <div class="manual-step-icon"><i class="bi bi-sliders"></i></div>
             <div>
               <h3>2. Verify the controller</h3>
-              <p>Connect the ESP32 control address, read the controller config, then use the bench nudges if the move directions still need calibration.</p>
+              <p>Connect the controller address and confirm the rig responds.</p>
             </div>
           </article>
           <article class="manual-step-card">
             <div class="manual-step-icon"><i class="bi bi-crosshair"></i></div>
             <div>
               <h3>3. Follow target guidance</h3>
-              <p>Use the target `x/y`, filtered center, and move hints to keep the object centered before any manual fire decision.</p>
+              <p>Use `x/y`, center offset, and move hints to keep the target centered.</p>
             </div>
           </article>
         </div>
 
-        <div class="card card-hud mt-3">
-          <div class="card-header fw-semibold">
-            <i class="bi bi-shield-check me-2"></i>Safety Baseline
-          </div>
-          <div class="card-body">
-            <ul class="soft-list">
-              <li>
-                <strong>No auto-fire path</strong>
-                The UI does not fire automatically from detections. Laser control remains an explicit operator action.
-              </li>
-              <li>
-                <strong>Watch the move hint</strong>
-                `LEFT`, `RIGHT`, `UP`, and `DOWN` in the logs are manual camera correction hints, not automatic commands.
-              </li>
-              <li>
-                <strong>Clear before leaving</strong>
-                End on `Safe`, `Laser Off`, and a centered rig when bench work is complete.
-              </li>
-            </ul>
-          </div>
-        </div>
       </div>
 
       <div class="col-lg-8">
-        <div class="note-panel mb-3">
-          <div class="section-title">Build Note</div>
-          <p class="text-muted mb-0">The older proxy workflow is no longer part of the standard setup. The current firmware is expected to stream directly to the browser with CORS headers already enabled.</p>
-        </div>
-
         <div class="accordion accordion-flush" id="manualAccordion">
           <div class="accordion-item card-hud">
             <h2 class="accordion-header" id="cameraHead">
@@ -107,7 +85,7 @@
             </h2>
             <div id="cameraBody" class="accordion-collapse collapse show" aria-labelledby="cameraHead" data-bs-parent="#manualAccordion">
               <div class="accordion-body">
-                Enter the ESP32-CAM URL in the form `http://camera-ip/stream`. Once the image appears, the page starts detection automatically. If the stream opens in a separate browser tab but not in the page, confirm the camera path and check that the firmware still serves browser-friendly CORS headers.
+                Enter the camera URL as `http://camera-ip/stream`. When the image loads, detection starts automatically.
               </div>
             </div>
           </div>
@@ -120,7 +98,7 @@
             </h2>
             <div id="controllerBody" class="accordion-collapse collapse" aria-labelledby="controllerHead" data-bs-parent="#manualAccordion">
               <div class="accordion-body">
-                Connect the ESP32 control address, then confirm manual arrows, `Laser On`, `Laser Off`, and `Stop Operation` respond correctly. Use `Read Controller Config` and the `X+ / Y+` probe buttons if the bench rig still needs direction mapping.
+                Connect the controller address and confirm arrows, `Laser On`, `Laser Off`, and `Stop Operation` respond correctly.
               </div>
             </div>
           </div>
@@ -133,7 +111,7 @@
             </h2>
             <div id="detectorBody" class="accordion-collapse collapse" aria-labelledby="detectorHead" data-bs-parent="#manualAccordion">
               <div class="accordion-body">
-                Leave `AeroYOLO ONNX` selected unless you specifically want the generic COCO fallback. `Drone / rotorcraft focus` is the tighter profile for UAV work, while `Full air sweep` broadens the class set for exploration. Strong and possible thresholds only affect classification confidence; they do not move the servos.
+                Leave `AeroYOLO ONNX` selected unless you need the generic COCO fallback. Thresholds only affect detection confidence.
               </div>
             </div>
           </div>
@@ -146,7 +124,7 @@
             </h2>
             <div id="assistBody" class="accordion-collapse collapse" aria-labelledby="assistHead" data-bs-parent="#manualAccordion">
               <div class="accordion-body">
-                When a target is tracked, read the label, confidence, raw center, filtered center, and move hints together. The event console now writes `Target detected` lines with `x`, `y`, and `move=` so the same guidance appears in both the live panel and the review logs.
+                When a target is tracked, read the label, confidence, `x/y`, and move hints together.
               </div>
             </div>
           </div>
@@ -159,7 +137,7 @@
             </h2>
             <div id="laserBody" class="accordion-collapse collapse" aria-labelledby="laserHead" data-bs-parent="#manualAccordion">
               <div class="accordion-body">
-                Fire only after the target is visually confirmed and the rig is stable. Use `Laser Off` immediately after the action, then press `Stop Operation` if you are ending the session. Before leaving the bench, return the rig to center and confirm the status panel shows a safe state.
+                Fire only after visual confirmation. Use `Laser Off` immediately after action and center the rig before leaving.
               </div>
             </div>
           </div>
@@ -168,15 +146,15 @@
     </div>
   </main>
 
-  <footer class="text-center text-muted small py-3">
-    <a class="link-hud me-3" href="control.html"><i class="bi bi-speedometer2 me-1"></i>Control Panel</a>
+  <footer class="text-center text-muted small py-3 footer-links">
+    <a class="link-hud" href="control.html"><i class="bi bi-speedometer2 me-1"></i>Control Panel</a>
     <a class="link-hud" href="form.html"><i class="bi bi-ui-checks-grid me-1"></i>Submit Change Request</a>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/pages/manual.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/pages/manual.js"></script>
 </body>
 </html>

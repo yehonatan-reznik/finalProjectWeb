@@ -18,18 +18,20 @@ This repo contains the current browser-based ground control demo:
 
 ```text
 code/
-  control.html
-  index.html
-  logs.html
-  manual.html
-  form.html
+  html/
+    control.html
+    index.html
+    logs.html
+    manual.html
+    form.html
   css/
   js/
     auth.js
     pages/
+      control.js
+      control-detection.js
   models/
     aeroyolo.onnx
-  object-detection/
   firmware/
     README.md
     ai_thinker_cam_http80/
@@ -50,13 +52,16 @@ code/
 
 ## Running the web app
 
-Open `control.html` through a local server such as VS Code Live Server.
+Open `html/index.html` or `html/control.html` through a local server such as VS Code Live Server.
 
 The current ESP32-CAM firmware already sends browser-friendly CORS headers, so the expected path is direct streaming from the browser without a local proxy layer.
 
 ## Detection and operator assist
 
 - `AeroYOLO` is the default browser detector for `aircraft`, `drone`, and `helicopter`.
+- `models/aeroyolo.onnx` is the actual binary model file used by the browser ONNX runtime. It is not text, so opening it in a text editor will look corrupted.
+- `js/pages/control.js` owns page wiring, Firebase sync, manual HTTP control, and calibration UX.
+- `js/pages/control-detection.js` owns model loading, target filtering, overlay drawing, and telemetry export.
 - `Operator Assist` turns the target offset into manual guidance such as `LEFT`, `RIGHT`, `UP`, or `DOWN`.
 - `Servo Calibration` lets you send small `X` and `Y` nudges, record what `X+` and `Y+` physically do, and derive which axis is pan vs tilt.
 - This remains manual-assist only. No automatic servo motion is generated from live detections.

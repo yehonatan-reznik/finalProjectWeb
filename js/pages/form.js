@@ -1,4 +1,5 @@
-﻿(function () {
+// Request form page script: enforces auth for the static change-request page.
+(function () {
   'use strict';
 
   if (window.SkyShieldAuth) {

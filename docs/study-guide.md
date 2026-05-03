@@ -9,7 +9,7 @@ The project is a browser-based ground control station for an ESP32 camera and a 
 There are four main parts:
 
 1. The browser UI
-   - Main page: `control.html`
+   - Main page: `html/control.html`
    - Main logic: `js/pages/control.js`
    - Auth wrapper: `js/auth.js`
    - Login page logic: `js/pages/login.js`
@@ -41,7 +41,7 @@ That architecture is intentional because direct local HTTP control is much faste
 
 ### Browser detection flow
 
-1. User opens `control.html`.
+1. User opens `html/control.html`.
 2. Browser loads the camera stream.
 3. Browser loads a model:
    - default: `AeroYOLO` ONNX model
@@ -65,9 +65,9 @@ That architecture is intentional because direct local HTTP control is much faste
 4. After login, the website listens to RTDB.
 5. If local browser storage does not already contain IPs, the page auto-fills camera/controller URLs from Firebase.
 
-## 3. `control.html` Explained
+## 3. `html/control.html` Explained
 
-`control.html` is the main operator interface. It is only structure and markup; the dynamic behavior is in `control.js`.
+`html/control.html` is the main operator interface. It is only structure and markup; the dynamic behavior is in `control.js`.
 
 ### 3.1 Main layout
 
@@ -229,7 +229,7 @@ The login page logic is simple:
 - gets the login form elements
 - listens for submit
 - calls `SkyShieldAuth.loginWithEmail()`
-- redirects to `control.html` after successful authentication
+- redirects to `control.html` after successful authentication inside the `html/` folder
 - respects a `redirect` query parameter
 
 This separation keeps login logic out of `control.js`.
@@ -261,7 +261,7 @@ The file starts by defining a helper:
 const $ = (id) => document.getElementById(id);
 ```
 
-Then it caches almost every important DOM element from `control.html`.
+Then it caches almost every important DOM element from `html/control.html`.
 
 This is important because:
 
@@ -1637,7 +1637,7 @@ It initializes the camera, connects to Wi-Fi, starts the stream server, publishe
 
 If you need a very short memory version:
 
-- `control.html` = UI structure
+- `html/control.html` = UI structure
 - `auth.js` = Firebase auth and database setup
 - `control.js` = brain of browser app
 - camera firmware = stream provider

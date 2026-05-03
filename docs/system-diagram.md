@@ -7,7 +7,7 @@ This document summarizes the project flow and the electronic component layout ba
 ```mermaid
 flowchart TD
     A[ESP32-CAM\nCamera captures live video] --> B[HTTP stream\n/stream]
-    B --> C[Browser control page\ncontrol.html]
+    B --> C[Browser control page\nhtml/control.html]
     C --> D[TensorFlow.js + COCO-SSD\nanalyze each frame]
     D --> E[Target candidate detected]
     E --> F[Calculate target offset\ncenterX, centerY, dx, dy, normX, normY]
@@ -29,7 +29,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph PC[Operator station]
-        UI[Browser UI\ncontrol.html]
+        UI[Browser UI\nhtml/control.html]
     end
 
     subgraph CAM[ESP32-CAM board]
