@@ -251,6 +251,33 @@
         </div>
         <div class="card card-hud status-panel mt-3">
           <div class="card-header fw-semibold">
+            <i class="bi bi-cloud-arrow-down me-2"></i>Firebase Sync
+          </div>
+          <div class="card-body">
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Status</div>
+              <div class="col-7 status-grid-value text-end"><span id="firebaseSyncVal" class="status-emphasis">Idle</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Camera URL</div>
+              <div class="col-7 status-grid-value text-end"><span id="firebaseCameraVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Controller URL</div>
+              <div class="col-7 status-grid-value text-end"><span id="firebaseControllerVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Laser</div>
+              <div class="col-7 status-grid-value text-end"><span id="firebaseLaserVal" class="status-emphasis">n/a</span></div>
+            </div>
+            <div class="row g-2 status-grid">
+              <div class="col-5 status-grid-label">Home Angles</div>
+              <div class="col-7 status-grid-value text-end"><span id="firebaseHomeVal" class="status-emphasis">n/a</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card card-hud status-panel mt-3">
+          <div class="card-header fw-semibold">
             <i class="bi bi-sliders me-2"></i>Detection Lab
           </div>
           <div class="card-body">
@@ -414,6 +441,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/pages/control.js"></script>
 

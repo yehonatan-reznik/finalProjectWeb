@@ -68,6 +68,7 @@ The current ESP32-CAM firmware already sends browser-friendly CORS headers, so t
 - Copy `secrets.example.h` to `secrets.h` in each firmware folder before compiling.
 - `secrets.h` is ignored by Git.
 - The controller firmware keeps the current web UI endpoints, adds JSON status/config endpoints, and rate-limits servo writes so bench tests are less noisy.
+- If you set `SKYSHIELD_FIREBASE_DATABASE_URL`, the ESP32-CAM publishes `cameraIP`, the controller publishes `espIP` and `laserOn`, and the controller can read startup `homeX/homeY` from Firebase RTDB.
 
 ## Controller endpoints
 

@@ -23,4 +23,6 @@ Notes:
 - The firmware keeps the current web UI endpoints working.
 - Servo updates are rate-limited to reduce chatter.
 - Startup is safe: servos go to home angles and laser output starts off.
+- If Firebase RTDB is configured in `secrets.h`, startup home angles are read from `controller/config/homeX` and `controller/config/homeY`, with `homeX` and `homeY` root keys as a fallback.
+- If Firebase RTDB is configured, the controller also publishes `laserOn`, `espIP`, and detailed state under `controller/state`.
 - During bench testing, replace the laser with an LED when possible.

@@ -1,5 +1,7 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 #include "secrets.h"
 
@@ -28,6 +30,97 @@ extern "C" {
 
 static httpd_handle_t camera_httpd = nullptr;
 static unsigned long lastWifiRetryMs = 0;
+static unsigned long lastFirebaseSyncMs = 0;
+static bool firebaseSyncPending = false;
+static bool lastWifiConnected = false;
+
+#ifndef SKYSHIELD_FIREBASE_DATABASE_URL
+#define SKYSHIELD_FIREBASE_DATABASE_URL ""
+#endif
+
+#ifndef SKYSHIELD_FIREBASE_AUTH
+#define SKYSHIELD_FIREBASE_AUTH ""
+#endif
+
+#ifndef SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS
+#define SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS 30000UL
+#endif
+
+static const char* FIREBASE_DATABASE_URL = SKYSHIELD_FIREBASE_DATABASE_URL;
+static const char* FIREBASE_AUTH = SKYSHIELD_FIREBASE_AUTH;
+static const unsigned long FIREBASE_SYNC_INTERVAL_MS = SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS;
+
+static String trim_trailing_slashes(const String& raw) {
+  String value = raw;
+  while (value.endsWith("/")) value.remove(value.length() - 1);
+  return value;
+}
+
+static bool firebase_enabled() {
+  return FIREBASE_DATABASE_URL && FIREBASE_DATABASE_URL[0] != '\0';
+}
+
+static String firebase_url(const char* path) {
+  String url = trim_trailing_slashes(FIREBASE_DATABASE_URL);
+  if (path && *path) {
+    if (path[0] != '/') url += '/';
+    url += path;
+  }
+  url += ".json";
+  if (FIREBASE_AUTH && FIREBASE_AUTH[0] != '\0') {
+    url += "?auth=";
+    url += FIREBASE_AUTH;
+  }
+  return url;
+}
+
+static bool firebase_request(const char* method, const char* path, const String* body) {
+  if (!firebase_enabled() || WiFi.status() != WL_CONNECTED) return false;
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (!http.begin(client, firebase_url(path))) return false;
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
+  if (body) http.addHeader("Content-Type", "application/json");
+  const int statusCode = body
+    ? http.sendRequest(method, reinterpret_cast<const uint8_t*>(body->c_str()), body->length())
+    : http.sendRequest(method);
+  http.end();
+  return statusCode >= 200 && statusCode < 300;
+}
+
+static String camera_base_url() {
+  return String("http://") + WiFi.localIP().toString();
+}
+
+static void request_firebase_sync() {
+  firebaseSyncPending = true;
+}
+
+static bool publish_firebase_state() {
+  if (!firebase_enabled() || WiFi.status() != WL_CONNECTED) return false;
+  const String baseUrl = camera_base_url();
+  const String rootBody = String("{\"cameraIP\":\"") + baseUrl + "/\"}";
+  const String cameraBody =
+    String("{\"state\":{\"ip\":\"") + WiFi.localIP().toString() +
+    "\",\"urlBase\":\"" + baseUrl +
+    "\",\"streamUrl\":\"" + baseUrl + "/stream" +
+    "\",\"captureUrl\":\"" + baseUrl + "/capture" +
+    "\",\"healthUrl\":\"" + baseUrl + "/health" +
+    "\",\"wifi\":" + (WiFi.status() == WL_CONNECTED ? "true" : "false") +
+    ",\"rssi\":" + String(WiFi.RSSI()) +
+    ",\"heap\":" + String(ESP.getFreeHeap()) +
+    ",\"uptimeMs\":" + String(millis()) + "}}";
+  const bool rootOk = firebase_request("PATCH", "/", &rootBody);
+  const bool cameraOk = firebase_request("PATCH", "/camera", &cameraBody);
+  if (rootOk && cameraOk) {
+    lastFirebaseSyncMs = millis();
+    firebaseSyncPending = false;
+    return true;
+  }
+  return false;
+}
 
 static void add_common_headers(httpd_req_t* req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -188,6 +281,7 @@ static bool init_camera() {
 static bool connect_wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(SKYSHIELD_WIFI_SSID, SKYSHIELD_WIFI_PASSWORD);
 
   Serial.print("Connecting to Wi-Fi");
@@ -267,6 +361,8 @@ void setup() {
   }
 
   start_camera_server();
+  request_firebase_sync();
+  publish_firebase_state();
 
   IPAddress ip = WiFi.localIP();
   Serial.print("Home URL:    http://");
@@ -283,12 +379,19 @@ void setup() {
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetryMs > 5000UL) {
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (!wifiConnected && millis() - lastWifiRetryMs > 5000UL) {
     lastWifiRetryMs = millis();
     Serial.println("Wi-Fi disconnected, reconnecting...");
     WiFi.disconnect();
     WiFi.begin(SKYSHIELD_WIFI_SSID, SKYSHIELD_WIFI_PASSWORD);
   }
+
+  if (wifiConnected && (!lastWifiConnected || firebaseSyncPending || millis() - lastFirebaseSyncMs >= FIREBASE_SYNC_INTERVAL_MS)) {
+    publish_firebase_state();
+  }
+
+  lastWifiConnected = wifiConnected;
 
   delay(250);
 }

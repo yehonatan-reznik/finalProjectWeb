@@ -5,6 +5,7 @@
   const firebaseConfig = {
     apiKey: 'AIzaSyBuRH94SdL8iA830JeKT2Xyp2LKXsw1EXk',
     authDomain: 'skyshield-45d5e.firebaseapp.com',
+    databaseURL: 'https://skyshield-45d5e-default-rtdb.firebaseio.com',
     projectId: 'skyshield-45d5e',
     storageBucket: 'skyshield-45d5e.firebasestorage.app',
     messagingSenderId: '112895141645',
@@ -21,6 +22,7 @@
     : firebase.initializeApp(firebaseConfig);
 
   const auth = firebase.auth(app);
+  const database = typeof firebase.database === 'function' ? firebase.database(app) : null;
 
   // logs in a user using email and password via firebase auth
   async function loginWithEmail(rawEmail, rawPassword) {
@@ -120,6 +122,9 @@
     isAuthenticated,
     onAuthChanged,
     requireAuth,
-    auth
+    auth,
+    app,
+    database,
+    getDatabase: () => database
   };
 })(window);

@@ -33,6 +33,11 @@ const targetDeltaVal = $('targetDeltaVal');
 const targetDeltaNormVal = $('targetDeltaNormVal');
 const simCommandVal = $('simCommandVal');
 const loopTimeVal = $('loopTimeVal');
+const firebaseSyncVal = $('firebaseSyncVal');
+const firebaseCameraVal = $('firebaseCameraVal');
+const firebaseControllerVal = $('firebaseControllerVal');
+const firebaseLaserVal = $('firebaseLaserVal');
+const firebaseHomeVal = $('firebaseHomeVal');
 const detectBackendSelect = $('detectBackendSelect');
 const detectProfileSelect = $('detectProfileSelect');
 const strongThresholdInput = $('strongThresholdInput');
@@ -153,6 +158,15 @@ const controllerState = {
   },
 };
 
+const firebaseState = {
+  syncStarted: false,
+  unsubscribe: null,
+  rootRef: null,
+  autoAppliedCamera: false,
+  autoAppliedController: false,
+  lastSnapshot: null,
+};
+
 const MANUAL_BUTTON_COMMANDS = [
   { button: 'Left', command: 'step_left' },
   { button: 'Right', command: 'step_right' },
@@ -202,6 +216,10 @@ function logConsole(message, variant) {
   consolePanel.scrollTop = consolePanel.scrollHeight;
 }
 
+function setFirebaseStatus(text) {
+  if (firebaseSyncVal) firebaseSyncVal.textContent = text || 'Idle';
+}
+
 function setDetectStatus(text, variant) {
   if (!detectStatus) return;
   detectStatus.textContent = text;
@@ -224,6 +242,101 @@ function setMode(text) {
 function setProfileStatus(profileId) {
   const profile = getProfile(profileId);
   if (profileVal) profileVal.textContent = profile.label;
+}
+
+function formatFirebaseValue(value, fallback) {
+  return value ? String(value) : (fallback || 'n/a');
+}
+
+function readFirebaseNumber(value, fallback) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getFirebaseSnapshotValue(data, path, fallback) {
+  const parts = Array.isArray(path) ? path : String(path || '').split('.');
+  let current = data;
+  for (let i = 0; i < parts.length; i += 1) {
+    const key = parts[i];
+    if (!key) continue;
+    if (!current || typeof current !== 'object' || !(key in current)) return fallback;
+    current = current[key];
+  }
+  return typeof current === 'undefined' || current === null ? fallback : current;
+}
+
+function normalizeFirebaseUrl(raw) {
+  const normalized = normalizeBaseUrl(raw);
+  return normalized || '';
+}
+
+function applyFirebaseSnapshot(data) {
+  firebaseState.lastSnapshot = data || null;
+  const cameraUrl = normalizeFirebaseUrl(
+    getFirebaseSnapshotValue(data, ['camera', 'state', 'urlBase'], '') ||
+    getFirebaseSnapshotValue(data, 'cameraIP', '')
+  );
+  const controllerUrl = normalizeFirebaseUrl(
+    getFirebaseSnapshotValue(data, ['controller', 'state', 'urlBase'], '') ||
+    getFirebaseSnapshotValue(data, 'espIP', '')
+  );
+  const laserValue = getFirebaseSnapshotValue(data, ['controller', 'state', 'laserOn'], getFirebaseSnapshotValue(data, 'laserOn', null));
+  const homeX = readFirebaseNumber(getFirebaseSnapshotValue(data, ['controller', 'config', 'homeX'], getFirebaseSnapshotValue(data, 'homeX', null)), null);
+  const homeY = readFirebaseNumber(getFirebaseSnapshotValue(data, ['controller', 'config', 'homeY'], getFirebaseSnapshotValue(data, 'homeY', null)), null);
+
+  if (firebaseCameraVal) firebaseCameraVal.textContent = formatFirebaseValue(cameraUrl);
+  if (firebaseControllerVal) firebaseControllerVal.textContent = formatFirebaseValue(controllerUrl);
+  if (firebaseLaserVal) firebaseLaserVal.textContent = laserValue === null || typeof laserValue === 'undefined' ? 'n/a' : (Number(laserValue) === 1 ? 'On' : 'Off');
+  if (firebaseHomeVal) firebaseHomeVal.textContent = Number.isFinite(homeX) && Number.isFinite(homeY) ? `${homeX} / ${homeY}` : 'n/a';
+  setFirebaseStatus('Live');
+
+  if (laserValue !== null && typeof laserValue !== 'undefined') {
+    isLaserOn = Number(laserValue) === 1;
+  }
+
+  if (!localStorage.getItem(STORAGE_KEY) && cameraUrl && !firebaseState.autoAppliedCamera) {
+    firebaseState.autoAppliedCamera = true;
+    if (urlInput) urlInput.value = cameraUrl;
+    setStream(cameraUrl);
+    logConsole(`Firebase camera URL loaded: ${cameraUrl}`, 'text-info');
+  }
+
+  if (!localStorage.getItem(ESP32_STORAGE_KEY) && controllerUrl && !firebaseState.autoAppliedController) {
+    firebaseState.autoAppliedController = true;
+    if (esp32IpInput) esp32IpInput.value = controllerUrl;
+    localStorage.setItem(ESP32_STORAGE_KEY, controllerUrl);
+    syncLaserState();
+    syncControllerConfig(false);
+    logConsole(`Firebase controller URL loaded: ${controllerUrl}`, 'text-info');
+  }
+}
+
+function startFirebaseSync() {
+  if (firebaseState.syncStarted) return;
+  firebaseState.syncStarted = true;
+  if (!(window.SkyShieldAuth && typeof window.SkyShieldAuth.getDatabase === 'function')) {
+    setFirebaseStatus('SDK unavailable');
+    return;
+  }
+  const db = window.SkyShieldAuth.getDatabase();
+  if (!db) {
+    setFirebaseStatus('Database unavailable');
+    return;
+  }
+  try {
+    firebaseState.rootRef = db.ref('/');
+    firebaseState.rootRef.on('value', (snapshot) => {
+      applyFirebaseSnapshot(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null);
+    }, (error) => {
+      console.error('Firebase RTDB listener failed.', error);
+      setFirebaseStatus('Read failed');
+      if (error && error.message) logConsole(`Firebase read failed: ${error.message}`, 'text-warning');
+    });
+    setFirebaseStatus('Listening');
+  } catch (err) {
+    console.error('Failed to start Firebase RTDB sync.', err);
+    setFirebaseStatus('Init failed');
+  }
 }
 
 function getSettings() {
@@ -1347,7 +1460,11 @@ function init() {
     if (feedImg) feedImg.classList.add('d-none');
   }
   window.addEventListener('resize', syncOverlaySize);
-  if (window.SkyShieldAuth) window.SkyShieldAuth.requireAuth();
+  if (window.SkyShieldAuth) {
+    window.SkyShieldAuth.requireAuth({
+      onAuthenticated: () => startFirebaseSync(),
+    });
+  }
   else console.error('SkyShieldAuth module missing. Protected routes may be vulnerable.');
 }
 

@@ -1,6 +1,9 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESP32Servo.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ctype.h>
 
 #include "secrets.h"
 
@@ -60,6 +63,18 @@
 #define SKYSHIELD_ENABLE_LASER_OUTPUT 1
 #endif
 
+#ifndef SKYSHIELD_FIREBASE_DATABASE_URL
+#define SKYSHIELD_FIREBASE_DATABASE_URL ""
+#endif
+
+#ifndef SKYSHIELD_FIREBASE_AUTH
+#define SKYSHIELD_FIREBASE_AUTH ""
+#endif
+
+#ifndef SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS
+#define SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS 30000UL
+#endif
+
 const int SERVO_X_PIN = SKYSHIELD_SERVO_X_PIN;
 const int SERVO_Y_PIN = SKYSHIELD_SERVO_Y_PIN;
 const int LASER_PIN = SKYSHIELD_LASER_PIN;
@@ -76,11 +91,16 @@ const int Y_DIR = SKYSHIELD_SERVO_Y_DIR;
 const bool LASER_ACTIVE_HIGH = SKYSHIELD_LASER_ACTIVE_HIGH != 0;
 const bool SERVO_OUTPUT_ENABLED = SKYSHIELD_ENABLE_SERVO_OUTPUT != 0;
 const bool LASER_OUTPUT_ENABLED = SKYSHIELD_ENABLE_LASER_OUTPUT != 0;
+const char* FIREBASE_DATABASE_URL = SKYSHIELD_FIREBASE_DATABASE_URL;
+const char* FIREBASE_AUTH = SKYSHIELD_FIREBASE_AUTH;
+const unsigned long FIREBASE_SYNC_INTERVAL_MS = SKYSHIELD_FIREBASE_SYNC_INTERVAL_MS;
 
 WebServer server(80);
 Servo servoX;
 Servo servoY;
 
+int homeXAngle = SERVO_HOME_X_DEG;
+int homeYAngle = SERVO_HOME_Y_DEG;
 int xAngle = SERVO_HOME_X_DEG;
 int yAngle = SERVO_HOME_Y_DEG;
 bool laserOn = false;
@@ -89,11 +109,161 @@ unsigned long lastWifiRetryMs = 0;
 unsigned long lastServoWriteMs = 0;
 unsigned long lastCommandMs = 0;
 unsigned long commandCount = 0;
+unsigned long lastFirebaseSyncMs = 0;
+bool firebaseSyncPending = false;
+bool lastWifiConnected = false;
 
 int clampAngle(int value) {
   if (value < SERVO_MIN_DEG) return SERVO_MIN_DEG;
   if (value > SERVO_MAX_DEG) return SERVO_MAX_DEG;
   return value;
+}
+
+String trimTrailingSlashes(const String& raw) {
+  String value = raw;
+  while (value.endsWith("/")) value.remove(value.length() - 1);
+  return value;
+}
+
+bool firebaseEnabled() {
+  return FIREBASE_DATABASE_URL && FIREBASE_DATABASE_URL[0] != '\0';
+}
+
+String firebaseUrl(const char* path) {
+  String url = trimTrailingSlashes(FIREBASE_DATABASE_URL);
+  if (path && *path) {
+    if (path[0] != '/') url += '/';
+    url += path;
+  }
+  url += ".json";
+  if (FIREBASE_AUTH && FIREBASE_AUTH[0] != '\0') {
+    url += "?auth=";
+    url += FIREBASE_AUTH;
+  }
+  return url;
+}
+
+bool firebaseRequest(const char* method, const char* path, const String* body, String* response) {
+  if (!firebaseEnabled() || WiFi.status() != WL_CONNECTED) return false;
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (!http.begin(client, firebaseUrl(path))) return false;
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
+  if (body) http.addHeader("Content-Type", "application/json");
+  const int statusCode = body
+    ? http.sendRequest(method, reinterpret_cast<const uint8_t*>(body->c_str()), body->length())
+    : http.sendRequest(method);
+  if (response && statusCode > 0) {
+    *response = http.getString();
+  }
+  http.end();
+  return statusCode >= 200 && statusCode < 300;
+}
+
+bool parseJsonIntField(const String& json, const char* field, int& out) {
+  const String needle = String("\"") + field + "\"";
+  const int keyIndex = json.indexOf(needle);
+  if (keyIndex < 0) return false;
+  const int colonIndex = json.indexOf(':', keyIndex + needle.length());
+  if (colonIndex < 0) return false;
+  int start = colonIndex + 1;
+  while (start < json.length() && isspace(static_cast<unsigned char>(json[start]))) start += 1;
+  int end = start;
+  if (end < json.length() && json[end] == '-') end += 1;
+  while (end < json.length() && isdigit(static_cast<unsigned char>(json[end]))) end += 1;
+  if (end <= start) return false;
+  out = json.substring(start, end).toInt();
+  return true;
+}
+
+bool parseJsonPrimitiveInt(const String& json, int& out) {
+  int start = 0;
+  while (start < json.length() && isspace(static_cast<unsigned char>(json[start]))) start += 1;
+  int end = json.length();
+  while (end > start && isspace(static_cast<unsigned char>(json[end - 1]))) end -= 1;
+  if (end <= start) return false;
+  const String trimmed = json.substring(start, end);
+  if (trimmed == "null") return false;
+  int valueStart = 0;
+  int valueEnd = trimmed.length();
+  if (trimmed[0] == '"') valueStart += 1;
+  if (valueEnd > valueStart && trimmed[valueEnd - 1] == '"') valueEnd -= 1;
+  if (valueEnd <= valueStart) return false;
+  const String numeric = trimmed.substring(valueStart, valueEnd);
+  for (int i = 0; i < numeric.length(); i += 1) {
+    if (!(isdigit(static_cast<unsigned char>(numeric[i])) || (i == 0 && numeric[i] == '-'))) return false;
+  }
+  out = numeric.toInt();
+  return true;
+}
+
+bool firebaseGetInt(const char* path, int& out) {
+  String response;
+  return firebaseRequest("GET", path, nullptr, &response) && parseJsonPrimitiveInt(response, out);
+}
+
+void requestFirebaseSync() {
+  firebaseSyncPending = true;
+}
+
+bool loadHomeAnglesFromFirebase() {
+  if (!firebaseEnabled()) return false;
+  String response;
+  int nextHomeX = homeXAngle;
+  int nextHomeY = homeYAngle;
+  bool foundX = false;
+  bool foundY = false;
+  if (firebaseRequest("GET", "/controller/config", nullptr, &response)) {
+    foundX = parseJsonIntField(response, "homeX", nextHomeX);
+    foundY = parseJsonIntField(response, "homeY", nextHomeY);
+  }
+  if (!foundX) foundX = firebaseGetInt("/homeX", nextHomeX);
+  if (!foundY) foundY = firebaseGetInt("/homeY", nextHomeY);
+  if (!(foundX || foundY)) return false;
+  homeXAngle = clampAngle(nextHomeX);
+  homeYAngle = clampAngle(nextHomeY);
+  xAngle = homeXAngle;
+  yAngle = homeYAngle;
+  Serial.printf("Firebase home angles loaded: x=%d y=%d\n", homeXAngle, homeYAngle);
+  return true;
+}
+
+String controllerBaseUrl() {
+  return String("http://") + WiFi.localIP().toString();
+}
+
+bool publishFirebaseState() {
+  if (!firebaseEnabled() || WiFi.status() != WL_CONNECTED) return false;
+  const String controllerUrl = controllerBaseUrl();
+  const String rootBody =
+    String("{\"espIP\":\"") + controllerUrl + "/\"" +
+    ",\"laserOn\":" + (laserOn ? "1" : "0") +
+    ",\"homeX\":" + String(homeXAngle) +
+    ",\"homeY\":" + String(homeYAngle) + "}";
+  const String controllerBody =
+    String("{\"config\":{\"homeX\":") + String(homeXAngle) +
+    ",\"homeY\":" + String(homeYAngle) +
+    "},\"state\":{\"xAngle\":" + String(xAngle) +
+    ",\"yAngle\":" + String(yAngle) +
+    ",\"laserOn\":" + (laserOn ? "1" : "0") +
+    ",\"wifi\":" + (WiFi.status() == WL_CONNECTED ? "true" : "false") +
+    ",\"ip\":\"" + WiFi.localIP().toString() +
+    "\",\"urlBase\":\"" + controllerUrl +
+    "\",\"rssi\":" + String(WiFi.RSSI()) +
+    ",\"heap\":" + String(ESP.getFreeHeap()) +
+    ",\"uptimeMs\":" + String(millis()) +
+    ",\"lastAction\":\"" + lastAction +
+    "\",\"commandCount\":" + String(commandCount) + "}}";
+  const bool rootOk = firebaseRequest("PATCH", "/", &rootBody, nullptr);
+  const bool controllerOk = firebaseRequest("PATCH", "/controller", &controllerBody, nullptr);
+  if (rootOk && controllerOk) {
+    lastFirebaseSyncMs = millis();
+    firebaseSyncPending = false;
+    return true;
+  }
+  return false;
 }
 
 unsigned long servoCooldownMs() {
@@ -106,6 +276,7 @@ void markAction(const char* action) {
   lastAction = action ? action : "unknown";
   lastCommandMs = millis();
   commandCount += 1;
+  requestFirebaseSync();
 }
 
 void applyServoAngles() {
@@ -113,6 +284,7 @@ void applyServoAngles() {
   servoX.write(xAngle);
   servoY.write(yAngle);
   lastServoWriteMs = millis();
+  requestFirebaseSync();
 }
 
 void applyLaserOutput() {
@@ -124,6 +296,7 @@ void applyLaserOutput() {
 void setLaser(bool on) {
   laserOn = LASER_OUTPUT_ENABLED ? on : false;
   applyLaserOutput();
+  requestFirebaseSync();
 }
 
 void addCommonHeaders() {
@@ -137,6 +310,8 @@ void addCommonHeaders() {
 String statusJson() {
   return String("{\"x\":") + xAngle +
          ",\"y\":" + yAngle +
+         ",\"home_x\":" + homeXAngle +
+         ",\"home_y\":" + homeYAngle +
          ",\"laser\":" + (laserOn ? "1" : "0") +
          ",\"servo_output_enabled\":" + (SERVO_OUTPUT_ENABLED ? "true" : "false") +
          ",\"laser_output_enabled\":" + (LASER_OUTPUT_ENABLED ? "true" : "false") +
@@ -323,7 +498,7 @@ void handleNudge() {
 }
 
 void handleCenter() {
-  moveToAngles(SERVO_HOME_X_DEG, SERVO_HOME_Y_DEG, "center");
+  moveToAngles(homeXAngle, homeYAngle, "center");
 }
 
 void handleStop() {
@@ -371,8 +546,8 @@ void handleConfig() {
     ",\"servo_max\":" + SERVO_MAX_DEG +
     ",\"servo_step\":" + SERVO_STEP_DEG +
     ",\"servo_min_interval_ms\":" + SERVO_MIN_INTERVAL_MS +
-    ",\"home_x\":" + SERVO_HOME_X_DEG +
-    ",\"home_y\":" + SERVO_HOME_Y_DEG +
+    ",\"home_x\":" + homeXAngle +
+    ",\"home_y\":" + homeYAngle +
     ",\"x_dir\":" + X_DIR +
     ",\"y_dir\":" + Y_DIR +
     ",\"servo_output_enabled\":" + (SERVO_OUTPUT_ENABLED ? "true" : "false") +
@@ -402,7 +577,6 @@ void setup() {
     servoY.setPeriodHertz(50);
     servoX.attach(SERVO_X_PIN, 500, 2400);
     servoY.attach(SERVO_Y_PIN, 500, 2400);
-    applyServoAngles();
   }
 
   if (!connectWifi()) {
@@ -410,6 +584,10 @@ void setup() {
       delay(1000);
     }
   }
+
+  loadHomeAnglesFromFirebase();
+  if (SERVO_OUTPUT_ENABLED) applyServoAngles();
+  publishFirebaseState();
 
   server.on("/", handleIndex);
   server.on("/servo_up", handleServoUp);
@@ -437,10 +615,17 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetryMs > 5000UL) {
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (!wifiConnected && millis() - lastWifiRetryMs > 5000UL) {
     lastWifiRetryMs = millis();
     Serial.println("Wi-Fi disconnected, reconnecting...");
     WiFi.disconnect();
     WiFi.begin(SKYSHIELD_WIFI_SSID, SKYSHIELD_WIFI_PASSWORD);
   }
+
+  if (wifiConnected && (!lastWifiConnected || firebaseSyncPending || millis() - lastFirebaseSyncMs >= FIREBASE_SYNC_INTERVAL_MS)) {
+    publishFirebaseState();
+  }
+
+  lastWifiConnected = wifiConnected;
 }
