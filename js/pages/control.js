@@ -47,6 +47,7 @@ const deadZoneInput = $('deadZoneInput');
 const downloadTelemetryBtn = $('downloadTelemetryBtn');
 const clearTelemetryBtn = $('clearTelemetryBtn');
 const assistMoveVal = $('assistMoveVal');
+const assistFrameVal = $('assistFrameVal');
 const assistButtonVal = $('assistButtonVal');
 const assistCenterVal = $('assistCenterVal');
 const refreshControllerConfigBtn = $('refreshControllerConfigBtn');
@@ -515,6 +516,14 @@ function formatAxisAssist(axisName, parsedLabel, derived) {
   return `${axisName}: ${button.button} x${parsedLabel.taps}`;
 }
 
+function describeFramePosition(normX, normY, deadZone) {
+  const horizontal = normX > deadZone ? 'right' : normX < -deadZone ? 'left' : '';
+  const vertical = normY > deadZone ? 'above' : normY < -deadZone ? 'below' : '';
+  if (!horizontal && !vertical) return 'Centered';
+  if (vertical && horizontal) return `${vertical}-${horizontal} of center`;
+  return `${vertical || horizontal} of center`;
+}
+
 function updateCalibrationReadouts() {
   const derived = deriveCalibration();
   if (controllerConfigVal) {
@@ -527,8 +536,10 @@ function updateCalibrationReadouts() {
 
 function updateOperatorAssistReadout() {
   const derived = deriveCalibration();
+  const settings = getSettings();
   if (!trackingState.hasTarget) {
     setReadout(assistMoveVal, 'No target');
+    setReadout(assistFrameVal, 'No target');
     setReadout(assistButtonVal, derived.xObserved === 'unknown' || derived.yObserved === 'unknown' ? 'Run calibration' : 'Wait for target');
     setReadout(assistCenterVal, 'Not centered');
     return;
@@ -537,9 +548,11 @@ function updateOperatorAssistReadout() {
   const panAssist = parseSimLabel(trackingState.simPanLabel);
   const tiltAssist = parseSimLabel(trackingState.simTiltLabel);
   const centered = panAssist.direction === 'hold' && tiltAssist.direction === 'hold';
+  const framePosition = describeFramePosition(trackingState.filteredNormX, trackingState.filteredNormY, settings.deadZone);
 
   if (centered) {
     setReadout(assistMoveVal, trackingState.isPossible ? 'Centered (possible)' : 'Centered');
+    setReadout(assistFrameVal, trackingState.isPossible ? `${framePosition} (possible)` : framePosition);
     setReadout(assistButtonVal, 'Hold position');
     setReadout(assistCenterVal, 'Centered');
     return;
@@ -549,6 +562,7 @@ function updateOperatorAssistReadout() {
   if (panAssist.direction !== 'hold') moveParts.push(`PAN ${friendlyDirection(panAssist.direction)}_${panAssist.size}`);
   if (tiltAssist.direction !== 'hold') moveParts.push(`TILT ${friendlyDirection(tiltAssist.direction)}_${tiltAssist.size}`);
   setReadout(assistMoveVal, moveParts.join(' / '));
+  setReadout(assistFrameVal, trackingState.isPossible ? `${framePosition} (possible)` : framePosition);
 
   const buttonParts = [];
   if (panAssist.direction !== 'hold') buttonParts.push(formatAxisAssist('Pan', panAssist, derived));
