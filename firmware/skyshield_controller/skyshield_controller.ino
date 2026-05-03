@@ -276,7 +276,6 @@ void markAction(const char* action) {
   lastAction = action ? action : "unknown";
   lastCommandMs = millis();
   commandCount += 1;
-  requestFirebaseSync();
 }
 
 void applyServoAngles() {
@@ -284,7 +283,6 @@ void applyServoAngles() {
   servoX.write(xAngle);
   servoY.write(yAngle);
   lastServoWriteMs = millis();
-  requestFirebaseSync();
 }
 
 void applyLaserOutput() {
@@ -623,7 +621,7 @@ void loop() {
     WiFi.begin(SKYSHIELD_WIFI_SSID, SKYSHIELD_WIFI_PASSWORD);
   }
 
-  if (wifiConnected && (!lastWifiConnected || firebaseSyncPending || millis() - lastFirebaseSyncMs >= FIREBASE_SYNC_INTERVAL_MS)) {
+  if (wifiConnected && (!lastWifiConnected || firebaseSyncPending)) {
     publishFirebaseState();
   }
 
