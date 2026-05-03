@@ -84,7 +84,7 @@ static bool firebase_request(const char* method, const char* path, const String*
   http.setTimeout(8000);
   if (body) http.addHeader("Content-Type", "application/json");
   const int statusCode = body
-    ? http.sendRequest(method, reinterpret_cast<const uint8_t*>(body->c_str()), body->length())
+    ? http.sendRequest(method, *body)
     : http.sendRequest(method);
   http.end();
   return statusCode >= 200 && statusCode < 300;
