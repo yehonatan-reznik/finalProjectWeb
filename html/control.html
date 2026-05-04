@@ -1,5 +1,21 @@
 ﻿<!doctype html>
 <!-- Purpose: primary operations page for live camera viewing, detection, manual controller input, and Firebase-assisted device discovery. -->
+<!-- EXAM: main operator dashboard structure and key element ids. -->
+<!-- Reading guide:
+1. The hero and top cards explain the live workspace.
+2. The main body contains the camera viewport, status cards, manual controls, and detector tuning.
+3. Scripts at the bottom load Bootstrap, ML runtimes, Firebase, and the two control-page JS files.
+Search guide:
+- Ctrl+F `cameraFeed` for the live image element used by browser-side detection.
+- Ctrl+F `cameraOverlay` for the overlay canvas drawn on top of the feed.
+- Ctrl+F `detectStatus` for the detector state badge.
+- Ctrl+F `detectBackendSelect` or `detectProfileSelect` for detector tuning controls.
+- Ctrl+F `esp32IpInput` for controller URL setup.
+Key terms:
+- live stream: the camera image loaded directly into the browser.
+- overlay canvas: transparent drawing layer for boxes, reticle, and guidance lines.
+- detector tuning: UI controls for thresholds, smoothing, backend, and profile.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8" />

@@ -1,32 +1,52 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
 
+/* Reading guide:
+ * 1. The top defines shared color/design tokens.
+ * 2. The middle defines reusable layout, card, form, camera, status, and support components.
+ * 3. The bottom contains page-specific helpers and responsive breakpoints.
+ * Search guide:
+ * - Ctrl+F `camera` for the live viewport, toolbar, and status styling used on the control page.
+ * - Ctrl+F `status` for dots, chips, and status-panel presentation.
+ * - Ctrl+F `page-hero` for the repeated top summary card style used across pages.
+ * - Ctrl+F `metric-card` for compact value cards.
+ * - Ctrl+F `@media` for responsive behavior on tablet/phone widths.
+ * Key terms:
+ * - design tokens: shared CSS variables like colors, borders, and shadows reused across the app.
+ * - surface: the dark panel/card background family used throughout the dashboard.
+ * - accent: the blue highlight color used for active/focus/emphasis states.
+ * - viewport shell: the framed container around the live camera stream and overlay.
+ */
+
+/* EXAM: design tokens. */
 /* === Design Tokens ======================================================= */
 /* Shared colors and spacing keep every page inside one consistent dashboard system. */
 :root {
   color-scheme: dark;
-  --bg: #0f172a;
-  --bg-soft: #111b2f;
-  --surface: #131e32;
-  --surface-soft: #18243a;
-  --surface-strong: #1e2c45;
-  --border: #263653;
-  --border-soft: #324564;
-  --text: #f8fbff;
-  --muted: #b5c1d4;
-  --muted-strong: #d7dfea;
-  --accent: #60a5fa;
-  --accent-strong: #93c5fd;
-  --success: #34d399;
-  --success-strong: #10b981;
-  --warn: #f59e0b;
-  --danger: #f87171;
-  --shadow: 0 20px 44px rgba(2, 8, 20, 0.32);
+  --bg: #0f172a; /* Deep background used as the darkest page tone. */
+  --bg-soft: #111b2f; /* Slightly lighter background used behind large page areas. */
+  --surface: #131e32; /* Main card/surface color for dashboard panels. */
+  --surface-soft: #18243a; /* Softer secondary card tone for nested sections. */
+  --surface-strong: #1e2c45; /* Stronger surface color for areas that need extra emphasis. */
+  --border: #263653; /* Default border color around cards and containers. */
+  --border-soft: #324564; /* Slightly brighter border used on inputs and focusable controls. */
+  --text: #f8fbff; /* Primary text color for readable high-contrast content. */
+  --muted: #b5c1d4; /* Secondary text color for notes and labels. */
+  --muted-strong: #d7dfea; /* Brighter muted text for important but non-primary content. */
+  --accent: #60a5fa; /* Main blue accent used for buttons, focus, and active states. */
+  --accent-strong: #93c5fd; /* Brighter accent used for headings and highlighted text. */
+  --success: #34d399; /* Green used for safe/ok states. */
+  --success-strong: #10b981; /* Stronger green used when extra emphasis is needed. */
+  --warn: #f59e0b; /* Amber used for caution/possible states. */
+  --danger: #f87171; /* Red used for danger/target/error states. */
+  --shadow: 0 20px 44px rgba(2, 8, 20, 0.32); /* Shared card shadow to keep depth consistent. */
 }
 
+/* EXAM: base layout and typography. */
 /* === Base Layout And Typography ========================================= */
 /* Move away from the terminal look by using a readable sans font and calmer background. */
 html,
 body {
+  /* The layered radial + linear gradients keep the whole app from feeling flat while preserving a dark operations-room tone. */
   min-height: 100%;
   background:
     radial-gradient(900px 420px at 92% -10%, rgba(96, 165, 250, 0.11), transparent 58%),
@@ -92,8 +112,10 @@ pre,
   letter-spacing: 0.08em;
 }
 
+/* EXAM: navbar and top navigation. */
 /* === Global Navigation =================================================== */
 .navbar {
+  /* Slight transparency + blur lets the fixed navbar float over content without becoming visually heavy. */
   background: rgba(9, 14, 26, 0.92);
   backdrop-filter: blur(18px);
   border-bottom: 1px solid rgba(147, 197, 253, 0.1);
@@ -121,9 +143,11 @@ pre,
   border-color: rgba(255, 255, 255, 0.14);
 }
 
+/* EXAM: shared card surfaces. */
 /* === Shared Card Surfaces =============================================== */
 .card-hud.card,
 .card-hud {
+  /* Shared dashboard panel look: dark gradient fill, rounded corners, thin border, and one common shadow recipe. */
   background: linear-gradient(180deg, rgba(18, 29, 48, 0.98), rgba(15, 24, 39, 0.98));
   border: 1px solid var(--border);
   border-radius: 1rem;
@@ -148,6 +172,7 @@ pre,
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* EXAM: forms and inputs. */
 /* === Forms And Inputs ==================================================== */
 .form-label {
   margin-bottom: 0.42rem;
@@ -158,6 +183,7 @@ pre,
 .form-control,
 .form-select,
 .form-control-hud.form-control {
+  /* Inputs use darker fills than cards so controls read as editable surfaces inside the darker dashboard shell. */
   min-height: 48px;
   color: var(--text);
   background: rgba(10, 16, 29, 0.96);
@@ -178,6 +204,7 @@ textarea.form-control {
 .form-control:focus,
 .form-select:focus,
 .form-control-hud:focus {
+  /* Focus state uses the blue accent to make keyboard/tab focus obvious without changing the whole palette. */
   color: var(--text);
   background: rgba(10, 16, 29, 0.98);
   border-color: rgba(106, 167, 255, 0.72);
@@ -209,8 +236,10 @@ textarea.form-control {
   line-height: 1.45;
 }
 
+/* EXAM: buttons. */
 /* === Buttons ============================================================= */
 .btn {
+  /* Buttons are intentionally tall and rounded so they remain easy to hit on touch screens and dashboard tablets. */
   min-height: 44px;
   padding-inline: 1rem;
   border-radius: 0.82rem;
@@ -309,6 +338,7 @@ textarea.form-control {
   min-width: 70px;
 }
 
+/* EXAM: login page shell. */
 /* === Login Page Shell ==================================================== */
 .login-page {
   background:
@@ -328,8 +358,10 @@ textarea.form-control {
   margin-inline: auto;
 }
 
+/* EXAM: compact page headers and hero blocks. */
 /* === Compact Page Headers =============================================== */
 .page-shell {
+  /* Main width limiter: keeps very wide monitors readable instead of stretching content edge-to-edge. */
   width: min(100%, 1480px);
   margin-inline: auto;
   padding-inline: 1.25rem;
@@ -344,6 +376,7 @@ textarea.form-control {
 }
 
 .page-hero {
+  /* Hero card uses a slightly brighter fill so the page intro separates from the denser operational cards below it. */
   padding: 0.95rem 1.15rem;
   background: linear-gradient(180deg, rgba(19, 31, 51, 0.99), rgba(17, 28, 45, 0.99));
 }
@@ -409,6 +442,7 @@ textarea.form-control {
   font-weight: 700;
 }
 
+/* EXAM: metric cards. */
 /* === Metric Cards ======================================================== */
 .metric-grid {
   display: grid;
@@ -420,6 +454,7 @@ textarea.form-control {
 }
 
 .metric-card {
+  /* Metric cards are intentionally shallow, compact containers for glanceable status values. */
   min-height: 0;
   padding: 0.82rem 0.92rem;
   background: rgba(255, 255, 255, 0.03);
@@ -452,8 +487,10 @@ textarea.form-control {
   font-size: 0.8rem;
 }
 
+/* EXAM: camera viewport and overlay shell. */
 /* === Camera Viewport ===================================================== */
 .camera-toolbar {
+  /* The camera toolbar uses a grid so status text, URL input, and helper note can wrap cleanly on narrower widths. */
   display: grid;
   gap: 0.65rem;
   justify-items: start;
@@ -476,6 +513,7 @@ textarea.form-control {
 }
 
 .camera-shell {
+  /* The camera shell is the visible viewport frame around the live stream and overlay canvas. */
   background: #07101d;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 0.95rem;
@@ -483,6 +521,7 @@ textarea.form-control {
 }
 
 .camera-status-text {
+  /* Monospace uppercase styling makes stream state feel like an operational status readout rather than body text. */
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 700;
@@ -490,8 +529,10 @@ textarea.form-control {
   text-transform: uppercase;
 }
 
+/* EXAM: status blocks and colored state dots. */
 /* === Status Blocks ======================================================= */
 .status-dot {
+  /* Tiny status dot lets the operator spot safe/warn/danger without reading text first. */
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -543,8 +584,10 @@ textarea.form-control {
   row-gap: 0.55rem;
 }
 
+/* EXAM: console panel. */
 /* === Console ============================================================= */
 .console {
+  /* Console keeps logs scrollable and fixed-height so repeated messages do not blow up the layout. */
   min-height: 168px;
   max-height: 320px;
   overflow: auto;
@@ -562,8 +605,10 @@ textarea.form-control {
   border-bottom: 0;
 }
 
+/* EXAM: tables. */
 /* === Tables ============================================================== */
 .table-hud.table {
+  /* Transparent table variables let Bootstrap tables inherit the same dark card surface instead of painting white cells. */
   --bs-table-bg: transparent;
   --bs-table-color: var(--text);
   --bs-table-border-color: rgba(255, 255, 255, 0.08);
@@ -616,6 +661,7 @@ textarea.form-control {
   overflow-wrap: anywhere;
 }
 
+/* EXAM: log page controls. */
 /* === Log Page Controls =================================================== */
 .log-toolbar {
   display: grid;
@@ -645,6 +691,7 @@ textarea.form-control {
 }
 
 .status-chip {
+  /* Status chips are reusable pill indicators for log/list contexts where a full card would be too heavy. */
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -696,6 +743,7 @@ textarea.form-control {
   border-color: rgba(168, 181, 199, 0.18);
 }
 
+/* EXAM: side rails and support note cards. */
 /* === Shared Side Rails And Notes ======================================== */
 .side-card-stack {
   display: grid;
@@ -734,6 +782,7 @@ textarea.form-control {
 }
 
 .option-group {
+  /* Option groups create a nested darker sub-surface inside larger cards, useful for calibration/settings groupings. */
   height: 100%;
   padding: 1rem 1.05rem;
   background: rgba(18, 29, 48, 0.78);
@@ -798,6 +847,7 @@ textarea.form-control {
   margin-bottom: 0;
 }
 
+/* EXAM: manual page components. */
 /* === Manual Page Components ============================================= */
 .manual-step-grid {
   display: grid;
@@ -805,6 +855,7 @@ textarea.form-control {
 }
 
 .manual-step-card {
+  /* Manual page steps use a two-column mini-layout: icon on the left, explanation on the right. */
   display: grid;
   grid-template-columns: 46px 1fr;
   gap: 0.9rem;
@@ -839,6 +890,7 @@ textarea.form-control {
   font-size: 0.92rem;
 }
 
+/* EXAM: accordions. */
 /* === Accordions ========================================================== */
 .accordion.card-hud {
   background: transparent;
@@ -851,6 +903,7 @@ textarea.form-control {
 }
 
 .accordion-button {
+  /* Accordions keep the same dark visual language as cards, rather than falling back to light Bootstrap defaults. */
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font-weight: 700;
@@ -876,6 +929,7 @@ textarea.form-control {
   line-height: 1.6;
 }
 
+/* EXAM: footer. */
 /* === Footer ============================================================== */
 footer {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -888,8 +942,10 @@ footer {
   gap: 0.9rem;
 }
 
+/* EXAM: responsive breakpoints. */
 /* === Responsive Tweaks =================================================== */
 @media (max-width: 991.98px) {
+  /* Tablet breakpoint: reduce horizontal padding and loosen table constraints so the dashboard still fits comfortably. */
   .page-shell,
   .page-shell-wide {
     width: 100%;
@@ -922,6 +978,7 @@ footer {
 }
 
 @media (max-width: 767.98px) {
+  /* Phone breakpoint: slightly smaller base font and tighter card padding to preserve usable viewport space. */
   html,
   body {
     font-size: 15px;

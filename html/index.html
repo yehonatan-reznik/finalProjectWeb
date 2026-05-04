@@ -1,5 +1,18 @@
 <!doctype html>
 <!-- Purpose: authenticated entry page for the SkyShield workspace. Operators land here before reaching the protected control page. -->
+<!-- EXAM: login page structure and protected-entry flow. -->
+<!-- Reading guide:
+1. The hero introduces the protected workspace.
+2. The main card contains the login form and error box.
+3. Bottom scripts load Bootstrap, Firebase auth, and the login page script.
+Search guide:
+- Ctrl+F `loginForm` for the main credential form.
+- Ctrl+F `emailInput` and `passwordInput` for the login fields.
+- Ctrl+F `loginError` for the error message container.
+Key terms:
+- protected access: login gate before the user can reach the control dashboard.
+- redirect: the page opened after a successful login.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8" />

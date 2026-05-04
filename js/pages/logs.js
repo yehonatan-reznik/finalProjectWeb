@@ -1,4 +1,15 @@
 // Logs page script: protects the page and filters the static session timeline by search text and category.
+// Reading guide:
+// 1. The top enforces authentication.
+// 2. The middle captures the search input, rows, and filter buttons.
+// 3. The bottom applies text/category filtering and updates active button state.
+// Search guide:
+// - Ctrl+F `applyFilters` for the core text/category filtering logic.
+// - Ctrl+F `activeFilter` for the currently selected category state.
+// Key terms:
+// - category filter: selected event group such as stream, detection, or controller.
+// - text filter: substring search applied to the row text content.
+// EXAM: authenticated log filtering page.
 (function () {
   'use strict';
 
@@ -14,6 +25,7 @@
   if (!searchInput || !rows.length) return;
   let activeFilter = 'all';
 
+  // EXAM: text/category row filtering.
   const applyFilters = () => {
     const q = searchInput.value.trim().toLowerCase();
     rows.forEach((tr) => {
