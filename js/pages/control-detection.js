@@ -1,5 +1,9 @@
 // Detection-only storage keys, model paths, and timing constants live here so control.js can stay focused on page flow.
 // DRONE_MODEL_URL points at the real ONNX weight file used by the AeroYOLO path.
+// Reading guide:
+// 1. The top of this file defines detector settings and runtime state.
+// 2. The middle converts model output into one tracked target plus UI hints.
+// 3. The bottom loads models, runs inference, and schedules the repeating detection loop.
 const DETECTION_SETTINGS_STORAGE_KEY = 'skyshield_detection_settings_v2';
 const DRONE_MODEL_URL = '../models/aeroyolo.onnx';
 const DEFAULT_DETECT_BACKEND_ID = 'aeroyolo';
@@ -89,14 +93,29 @@ const trackingState = {
 window.SkyShieldTracking = trackingState;
 
 // These helpers convert the settings controls into structured backend/profile configuration.
+/**
+ * @param {string} profileId - Saved or selected profile id.
+ * @returns {object} Matching profile config object.
+ */
 function getProfile(profileId) {
+  // Return the requested profile, or fall back to the strict/default one.
   return PROFILES[profileId] || PROFILES.strict;
 }
 
+/**
+ * @param {string} backendId - Saved or selected backend id.
+ * @returns {object} Matching backend config object.
+ */
 function getDetectBackend(backendId) {
+  // Return the requested backend, or fall back to COCO if the value is unknown.
   return DETECT_BACKENDS[backendId] || DETECT_BACKENDS.coco;
 }
 
+/**
+ * @param {object|null} profile - Active profile config.
+ * @param {string} backendId - Active detector backend id.
+ * @returns {string[]} Allowed labels for that profile/backend combination.
+ */
 function getProfileLabels(profile, backendId) {
   if (!profile) return [];
   // Each backend speaks different class names, so the active profile has backend-specific allow-lists.
@@ -104,9 +123,22 @@ function getProfileLabels(profile, backendId) {
 }
 
 // Settings are always read from the live controls first, then clamped to safe numeric ranges.
+/**
+ * @returns {{
+ *   backend: object,
+ *   profile: object,
+ *   strongThreshold: number,
+ *   possibleThreshold: number,
+ *   smoothingAlpha: number,
+ *   deadZone: number
+ * }} Active detector settings.
+ */
 function getSettings() {
+  // Read the backend selector from the page, falling back to the default backend id.
   const backend = getDetectBackend(detectBackendSelect ? detectBackendSelect.value : DEFAULT_DETECT_BACKEND_ID);
+  // Read the profile selector from the page, falling back to strict mode.
   const profile = getProfile(detectProfileSelect ? detectProfileSelect.value : 'strict');
+  // Clamp each numeric control so bad inputs cannot create impossible settings.
   const strongThreshold = clamp(strongThresholdInput && strongThresholdInput.value, 0.05, 0.99, 0.3);
   const possibleThreshold = clamp(possibleThresholdInput && possibleThresholdInput.value, 0.01, strongThreshold, 0.12);
   const smoothingAlpha = clamp(smoothingInput && smoothingInput.value, 0.05, 1, 0.35);
@@ -114,6 +146,9 @@ function getSettings() {
   return { backend, profile, strongThreshold, possibleThreshold, smoothingAlpha, deadZone };
 }
 
+/**
+ * Saves the current detector settings to localStorage.
+ */
 function saveSettings() {
   const settings = getSettings();
   // Persist the exact knobs shown in the UI so refreshes reopen with the same detector behavior.
@@ -128,15 +163,21 @@ function saveSettings() {
   setProfileStatus(settings.profile.id);
 }
 
+/**
+ * Loads detector settings from localStorage and applies them to the page controls.
+ */
 function loadSettings() {
   let saved = null;
   try {
+    // Parse the persisted detector settings if they exist.
     saved = JSON.parse(localStorage.getItem(DETECTION_SETTINGS_STORAGE_KEY) || 'null');
   } catch (err) {
     console.warn('Failed to parse saved detection settings.', err);
   }
+  // Recreate safe backend/profile objects from the saved ids.
   const backend = getDetectBackend((saved && saved.backendId) || DEFAULT_DETECT_BACKEND_ID);
   const profile = getProfile(saved && saved.profileId);
+  // Push those saved values back into the visible UI controls.
   if (detectBackendSelect) detectBackendSelect.value = backend.id;
   if (detectProfileSelect) detectProfileSelect.value = profile.id;
   if (strongThresholdInput) strongThresholdInput.value = String(clamp(saved && saved.strongThreshold, 0.05, 0.99, 0.3));
@@ -147,10 +188,18 @@ function loadSettings() {
 }
 
 // Track-lock helpers allow a nearby follow-up detection to use slightly relaxed thresholds.
+/**
+ * @returns {boolean} True when the tracker still considers the previous target locked.
+ */
 function hasTrackLock() {
+  // A track lock exists only when we still have a target label and have not missed too many frames.
   return trackingState.hasTarget && trackingState.missedFrames < LOST_LIMIT && !!trackingState.label;
 }
 
+/**
+ * @param {object|null} metrics - Candidate detection metrics in screen space.
+ * @returns {boolean} True when the candidate is close to the locked target.
+ */
 function isNearLockedTarget(metrics) {
   if (!hasTrackLock() || !metrics || !overlayCanvas) return false;
   // Distance is normalized against the on-screen diagonal so the rule behaves similarly on different viewport sizes.
@@ -160,7 +209,11 @@ function isNearLockedTarget(metrics) {
 }
 
 // clearTargetTelemetry resets both the HUD readouts and the in-memory tracking state when a target is lost.
+/**
+ * Resets tracking state and all target-related UI readouts.
+ */
 function clearTargetTelemetry() {
+  // Reset every visible target readout to a neutral placeholder.
   setReadout(targetLabelVal, 'n/a');
   setReadout(targetScoreVal, 'n/a');
   setReadout(targetCenterVal, 'n/a');
@@ -169,6 +222,7 @@ function clearTargetTelemetry() {
   setReadout(targetDeltaNormVal, 'n/a');
   setReadout(simCommandVal, 'HOLD / HOLD');
   setReadout(loopTimeVal, 'n/a');
+  // Also wipe the in-memory target state so later frames start from a clean slate.
   Object.assign(trackingState, {
     hasTarget: false,
     isPossible: false,
@@ -193,6 +247,9 @@ function clearTargetTelemetry() {
 }
 
 // Overlay geometry converts detections from image space into the displayed canvas space.
+/**
+ * Sizes the overlay canvas to match the displayed camera container.
+ */
 function syncOverlaySize() {
   if (!(overlayCanvas && feedImg && feedImg.parentElement)) return;
   // Match the canvas to the displayed image container, not the raw image pixels, because drawing happens in screen space.
@@ -200,27 +257,43 @@ function syncOverlaySize() {
   overlayCanvas.height = Math.round(feedImg.parentElement.clientHeight || 0);
 }
 
+/**
+ * Clears all overlay graphics from the canvas.
+ */
 function clearOverlay() {
   if (overlayCtx && overlayCanvas) {
+    // Remove every old box/reticle pixel from the canvas.
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   }
 }
 
+/**
+ * @returns {{scale: number, offsetX: number, offsetY: number}|null} Display scaling info for the camera image.
+ */
 function getImageFit() {
+  // If we do not yet know the actual image size, we cannot map detections to the screen.
   if (!(feedImg && feedImg.parentElement && feedImg.naturalWidth && feedImg.naturalHeight)) return null;
+  // Measure the displayed container size, not the raw image size.
   const width = feedImg.parentElement.clientWidth;
   const height = feedImg.parentElement.clientHeight;
+  // object-fit: contain means the image scales uniformly until it fits inside the container.
   const scale = Math.min(width / feedImg.naturalWidth, height / feedImg.naturalHeight);
   const displayWidth = feedImg.naturalWidth * scale;
   const displayHeight = feedImg.naturalHeight * scale;
   return { scale, offsetX: (width - displayWidth) / 2, offsetY: (height - displayHeight) / 2 };
 }
 
+/**
+ * @param {{bbox: number[]}} det - Detection object containing an image-space bbox.
+ * @returns {object|null} Screen-space metrics for drawing and tracking.
+ */
 function computeMetrics(det) {
   syncOverlaySize();
   const fit = getImageFit();
   if (!fit) return null;
+  // Unpack the model bbox, which is stored as [x, y, width, height].
   const [rawX, rawY, rawW, rawH] = det.bbox;
+  // Convert raw image-space coordinates into displayed canvas-space coordinates.
   const x = rawX * fit.scale + fit.offsetX;
   const y = rawY * fit.scale + fit.offsetY;
   const w = rawW * fit.scale;
@@ -239,6 +312,12 @@ function computeMetrics(det) {
 }
 
 // Candidate ranking filters the raw model output into the single target the UI should track.
+/**
+ * @param {string} className - Candidate class label.
+ * @param {object|null} metrics - Candidate metrics in screen space.
+ * @param {object} settings - Active detector settings.
+ * @returns {{possible: number, strong: number}} Thresholds for this candidate.
+ */
 function getDetectionThresholds(className, metrics, settings) {
   const base = {
     possible: settings.possibleThreshold,
@@ -252,6 +331,11 @@ function getDetectionThresholds(className, metrics, settings) {
   };
 }
 
+/**
+ * @param {object[]} predictions - Raw model predictions.
+ * @param {object} settings - Active detector settings.
+ * @returns {object[]} Decorated detection objects with metrics and candidate flags.
+ */
 function buildDetections(predictions, settings) {
   const labels = new Set(getProfileLabels(settings.profile, settings.backend.id));
   return predictions
@@ -272,9 +356,14 @@ function buildDetections(predictions, settings) {
     });
 }
 
+/**
+ * @param {object[]} candidates - Candidate detections already filtered for track eligibility.
+ * @returns {object|null} Single best detection to track.
+ */
 function chooseCandidate(candidates) {
   if (!candidates.length) return null;
   return candidates.reduce((best, det) => {
+    // Start ranking mostly by confidence score.
     let detRank = det.score || 0;
     let bestRank = best.score || 0;
     // When a target is already locked, penalize far-away boxes so the tracker stays stable.
@@ -288,6 +377,11 @@ function chooseCandidate(candidates) {
 }
 
 // Smoothing keeps the overlay and operator hints from jumping on every raw frame.
+/**
+ * @param {object} raw - Unsmooth candidate metrics for the selected target.
+ * @param {object} settings - Active detector settings.
+ * @returns {{centerX: number, centerY: number, deltaX: number, deltaY: number, normX: number, normY: number}} Smoothed metrics.
+ */
 function smoothMetrics(raw, settings) {
   if (!trackingState.hasTarget || trackingState.missedFrames >= LOST_LIMIT) {
     return { centerX: raw.centerX, centerY: raw.centerY, deltaX: raw.deltaX, deltaY: raw.deltaY, normX: raw.normX, normY: raw.normY };
@@ -303,6 +397,13 @@ function smoothMetrics(raw, settings) {
   return { centerX, centerY, deltaX: dx, deltaY: dy, normX, normY };
 }
 
+/**
+ * @param {number} norm - Normalized offset along one axis.
+ * @param {number} deadZone - Center tolerance where movement becomes HOLD.
+ * @param {string} negLabel - Label used when movement should go negative on that axis.
+ * @param {string} posLabel - Label used when movement should go positive on that axis.
+ * @returns {{value: number, label: string}} Simulated movement output for one axis.
+ */
 function simAxis(norm, deadZone, negLabel, posLabel) {
   const mag = Math.abs(norm);
   if (mag < deadZone) return { value: 0, label: 'HOLD' };
@@ -312,13 +413,23 @@ function simAxis(norm, deadZone, negLabel, posLabel) {
   return { value: norm < 0 ? -step : step, label: `${norm < 0 ? negLabel : posLabel}_${suffix}` };
 }
 
+/**
+ * @param {{normX: number, normY: number}} filtered - Smoothed normalized target offset.
+ * @param {object} settings - Active detector settings.
+ * @returns {{pan: number, tilt: number, panLabel: string, tiltLabel: string}} Simulated pan/tilt output.
+ */
 function simCommand(filtered, settings) {
+  // Horizontal offset becomes a pan hint; vertical offset becomes a tilt hint.
   const pan = simAxis(filtered.normX, settings.deadZone, 'LEFT', 'RIGHT');
   const tilt = simAxis(filtered.normY, settings.deadZone, 'DOWN', 'UP');
   return { pan: pan.value, tilt: tilt.value, panLabel: pan.label, tiltLabel: tilt.label };
 }
 
+/**
+ * @returns {string} Compact human-readable movement direction summary for the event console.
+ */
 function describeCameraMove() {
+  // Parse the two axis hints that were already generated for the currently tracked target.
   const panAssist = parseSimLabel(trackingState.simPanLabel);
   const tiltAssist = parseSimLabel(trackingState.simTiltLabel);
   const moves = [];
@@ -327,7 +438,12 @@ function describeCameraMove() {
   return moves.length ? moves.join(' / ') : 'HOLD';
 }
 
+/**
+ * @param {object} selected - Selected detection object.
+ * @returns {string} One-line event console message describing the selected target.
+ */
 function buildTargetLogMessage(selected) {
+  // Build one compact line for the event console with class, score, center, and suggested move.
   const labelText = `${selected.class} ${((selected.score || 0) * 100).toFixed(1)}%`;
   const x = trackingState.rawCenterX.toFixed(0);
   const y = trackingState.rawCenterY.toFixed(0);
@@ -336,8 +452,12 @@ function buildTargetLogMessage(selected) {
 }
 
 // Drawing helpers render both the full set of predictions and the currently selected target lock.
+/**
+ * Draws the fixed center reticle onto the overlay canvas.
+ */
 function drawReticle() {
   if (!(overlayCtx && overlayCanvas)) return;
+  // The reticle is centered in the visible overlay so the operator can compare target offset to screen center.
   const cx = overlayCanvas.width / 2;
   const cy = overlayCanvas.height / 2;
   overlayCtx.save();
@@ -356,8 +476,13 @@ function drawReticle() {
   overlayCtx.restore();
 }
 
+/**
+ * @param {object[]} detections - All detections that should be drawn.
+ * @param {object|null} selected - Detection currently chosen as the tracked target.
+ */
 function drawScene(detections, selected) {
   if (!(overlayCtx && overlayCanvas)) return;
+  // Always resize/clear/redraw in that order so stale geometry never remains on screen.
   syncOverlaySize();
   clearOverlay();
   drawReticle();
@@ -384,6 +509,7 @@ function drawScene(detections, selected) {
     overlayCtx.restore();
   });
   if (trackingState.hasTarget) {
+    // When a target is locked, also draw a line from the screen center to the filtered target center.
     const cx = overlayCanvas.width / 2;
     const cy = overlayCanvas.height / 2;
     overlayCtx.save();
@@ -411,9 +537,17 @@ function drawScene(detections, selected) {
 }
 
 // updateSelectedTarget bridges raw detections into the HUD, operator assist, and exported telemetry.
+/**
+ * @param {object} selected - Detection chosen as the tracked target.
+ * @param {object} settings - Active detector settings.
+ * @param {number} loopMs - Measured duration of the current detection pass.
+ */
 function updateSelectedTarget(selected, settings, loopMs) {
+  // Smooth the raw target center first so the UI is less jittery.
   const filtered = smoothMetrics(selected.metrics, settings);
+  // Convert the filtered offset into manual movement hints.
   const sim = simCommand(filtered, settings);
+  // Cache the chosen target and all derived values into shared runtime state.
   trackingState.hasTarget = true;
   trackingState.isPossible = !selected.isStrong;
   trackingState.label = selected.class;
@@ -432,6 +566,7 @@ function updateSelectedTarget(selected, settings, loopMs) {
   trackingState.simTiltLabel = sim.tiltLabel;
   trackingState.loopMs = loopMs;
   trackingState.missedFrames = 0;
+  // Mirror that cached state into the visible readout cards.
   setReadout(targetLabelVal, selected.isStrong ? selected.class : `Possible ${selected.class}`);
   setReadout(targetScoreVal, `${((selected.score || 0) * 100).toFixed(1)}%`);
   setReadout(targetCenterVal, formatPoint(selected.metrics.centerX, selected.metrics.centerY));
@@ -443,6 +578,9 @@ function updateSelectedTarget(selected, settings, loopMs) {
   updateOperatorAssistReadout();
 }
 
+/**
+ * @param {object} entry - Telemetry row to append to the rolling session buffer.
+ */
 function pushTelemetry(entry) {
   sessionTelemetry.push(entry);
   // Keep telemetry bounded in memory so a long session does not slowly grow the page footprint forever.
@@ -450,9 +588,13 @@ function pushTelemetry(entry) {
 }
 
 // The detection loop yields back to the browser between frames so UI and fetch handlers stay responsive.
+/**
+ * @returns {Promise<void>} Resolves after yielding one frame back to the browser event loop.
+ */
 async function yieldToBrowser() {
   if (window.tf && typeof tf.nextFrame === 'function') {
     try {
+      // tf.nextFrame is TensorFlow's preferred way to yield in graphics-heavy loops.
       await tf.nextFrame();
       return;
     } catch (err) {
@@ -463,14 +605,22 @@ async function yieldToBrowser() {
 }
 
 // Input preparation handles either low-resolution TF.js detection or the padded ONNX path.
+/**
+ * @returns {{canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}|null} Reusable off-screen surface.
+ */
 function ensureDetectSourceSurface() {
+  // Lazily create one reusable off-screen canvas instead of allocating a new one every frame.
   if (!detectSourceCanvas) detectSourceCanvas = document.createElement('canvas');
   if (!detectSourceCtx && detectSourceCanvas) detectSourceCtx = detectSourceCanvas.getContext('2d', { alpha: false });
   return detectSourceCanvas && detectSourceCtx ? { canvas: detectSourceCanvas, ctx: detectSourceCtx } : null;
 }
 
+/**
+ * @returns {{source: HTMLImageElement|HTMLCanvasElement, scaleX: number, scaleY: number}|null} Inference source and scale info.
+ */
 function getDetectionSource() {
   if (!(feedImg && feedImg.naturalWidth && feedImg.naturalHeight)) return null;
+  // Calculate how much we can shrink the source while staying inside the configured max dimensions.
   const downscale = Math.min(
     1,
     DETECT_MAX_SOURCE_WIDTH / feedImg.naturalWidth,
@@ -493,8 +643,15 @@ function getDetectionSource() {
   };
 }
 
+/**
+ * @param {object} prediction - Detection result returned from downscaled inference.
+ * @param {number} scaleX - Horizontal expansion factor back to original pixels.
+ * @param {number} scaleY - Vertical expansion factor back to original pixels.
+ * @returns {object} Prediction with bbox scaled back to original image size.
+ */
 function rescalePredictionBBox(prediction, scaleX, scaleY) {
   if (!prediction || !Array.isArray(prediction.bbox) || prediction.bbox.length < 4) return prediction;
+  // Expand the bbox back into the original image coordinate space after downscaled inference.
   const [x, y, w, h] = prediction.bbox;
   return {
     ...prediction,
@@ -502,6 +659,11 @@ function rescalePredictionBBox(prediction, scaleX, scaleY) {
   };
 }
 
+/**
+ * @param {number} modelWidth - Width expected by the ONNX model.
+ * @param {number} modelHeight - Height expected by the ONNX model.
+ * @returns {{input: Float32Array, scale: number, padX: number, padY: number}|null} Prepared tensor data and letterbox info.
+ */
 function preprocessDroneDetectSource(modelWidth, modelHeight) {
   const surface = ensureDetectSourceSurface();
   if (!surface || !feedImg || !feedImg.naturalWidth || !feedImg.naturalHeight) return null;
@@ -513,6 +675,7 @@ function preprocessDroneDetectSource(modelWidth, modelHeight) {
   const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
   const padX = Math.floor((modelWidth - drawWidth) / 2);
   const padY = Math.floor((modelHeight - drawHeight) / 2);
+  // Resize the reusable canvas to exactly match the model input tensor size.
   if (surface.canvas.width !== modelWidth) surface.canvas.width = modelWidth;
   if (surface.canvas.height !== modelHeight) surface.canvas.height = modelHeight;
   surface.ctx.clearRect(0, 0, modelWidth, modelHeight);
@@ -521,6 +684,7 @@ function preprocessDroneDetectSource(modelWidth, modelHeight) {
   surface.ctx.drawImage(feedImg, padX, padY, drawWidth, drawHeight);
   const imageData = surface.ctx.getImageData(0, 0, modelWidth, modelHeight).data;
   const channelSize = modelWidth * modelHeight;
+  // Allocate [R-plane][G-plane][B-plane] because ONNX expects CHW layout, not RGBA pixels.
   const input = new Float32Array(channelSize * 3);
   // ONNX expects CHW float32 input in the 0..1 range.
   for (let pixel = 0, i = 0; i < imageData.length; i += 4, pixel += 1) {
@@ -531,8 +695,13 @@ function preprocessDroneDetectSource(modelWidth, modelHeight) {
   return { input, scale, padX, padY };
 }
 
+/**
+ * @param {number[]} bbox - Bounding box to clamp into the visible feed dimensions.
+ * @returns {number[]} Safe bbox inside the feed bounds.
+ */
 function clampBboxToFeed(bbox) {
   if (!feedImg || !feedImg.naturalWidth || !feedImg.naturalHeight || !Array.isArray(bbox) || bbox.length < 4) return bbox;
+  // Clamp the decoded model box so drawing math never exceeds the image bounds.
   const [rawX, rawY, rawW, rawH] = bbox;
   const x = Math.max(0, Math.min(feedImg.naturalWidth, rawX));
   const y = Math.max(0, Math.min(feedImg.naturalHeight, rawY));
@@ -541,8 +710,15 @@ function clampBboxToFeed(bbox) {
   return [x, y, w, h];
 }
 
+/**
+ * @param {ArrayLike<number>} data - Flat ONNX output buffer.
+ * @param {number} offset - Starting index of the current prediction row.
+ * @param {{scale: number, padX: number, padY: number}} prepared - Letterbox metadata used to decode the row.
+ * @returns {object|null} Decoded prediction in shared bbox format.
+ */
 function normalizeDroneModelPrediction(data, offset, prepared) {
   if (!prepared || !Number.isFinite(prepared.scale) || prepared.scale <= 0) return null;
+  // Read one 6-value prediction row from the flat ONNX output buffer.
   const x1 = Number(data[offset]);
   const y1 = Number(data[offset + 1]);
   const x2 = Number(data[offset + 2]);
@@ -570,12 +746,18 @@ function normalizeDroneModelPrediction(data, offset, prepared) {
 }
 
 // Model bootstrap is backend-specific: TF.js for COCO-SSD and ONNX Runtime Web for AeroYOLO.
+/**
+ * @returns {Promise<void>} Resolves after TensorFlow backend selection is complete.
+ */
 async function ensureDetectBackend() {
+  // Skip setup if it already happened or if TensorFlow is unavailable on this page.
   if (detectBackendReady || !window.tf) return;
   try {
+    // Wait for TensorFlow.js runtime initialization to finish.
     await tf.ready();
     const currentBackend = typeof tf.getBackend === 'function' ? tf.getBackend() : '';
     if (currentBackend !== 'webgl' && typeof tf.findBackend === 'function' && tf.findBackend('webgl')) {
+      // Prefer WebGL for browser inference if it exists.
       await tf.setBackend('webgl');
       await tf.ready();
     }
@@ -587,7 +769,11 @@ async function ensureDetectBackend() {
   }
 }
 
+/**
+ * @returns {Promise<object|null>} Loaded COCO-SSD model instance.
+ */
 async function ensureCocoDetectModel() {
+  // Reuse the already-loaded model if it is present.
   if (detectModelReady && detectModel) return detectModel;
   if (!window.cocoSsd) {
     setDetectStatus('Detect: model missing', 'bg-danger');
@@ -597,6 +783,7 @@ async function ensureCocoDetectModel() {
   setDetectStatus('Detect: loading', 'bg-warning');
   try {
     await ensureDetectBackend();
+    // Load the COCO-SSD model bundle from the global library.
     detectModel = await cocoSsd.load();
     detectModelReady = true;
     setDetectStatus('Detect: ready', 'bg-success');
@@ -610,7 +797,11 @@ async function ensureCocoDetectModel() {
   }
 }
 
+/**
+ * @returns {Promise<object|null>} Loaded ONNX Runtime inference session.
+ */
 async function ensureDroneDetectSession() {
+  // Reuse the already-created ONNX session if it is ready.
   if (droneDetectSessionReady && droneDetectSession) return droneDetectSession;
   if (!(window.ort && ort.InferenceSession && ort.Tensor)) {
     setDetectStatus('Detect: model missing', 'bg-danger');
@@ -619,6 +810,7 @@ async function ensureDroneDetectSession() {
   }
   setDetectStatus('Detect: loading', 'bg-warning');
   try {
+    // Use one WASM thread to keep resource use predictable on small machines.
     if (ort.env && ort.env.wasm) ort.env.wasm.numThreads = 1;
     try {
       droneDetectSession = await ort.InferenceSession.create(DRONE_MODEL_URL, {
@@ -646,20 +838,28 @@ async function ensureDroneDetectSession() {
 }
 
 // Each backend returns normalized prediction objects with a class, confidence score, and bbox.
+/**
+ * @returns {Promise<object[]>} Normalized predictions from the COCO backend.
+ */
 async function detectWithCoco() {
   const model = await ensureCocoDetectModel();
   if (!model) return [];
   const detectionSource = getDetectionSource();
   if (!detectionSource) return [];
+  // Run COCO-SSD on either the original image or the downscaled off-screen canvas.
   const rawPredictions = await model.detect(detectionSource.source);
   return (detectionSource.scaleX === 1 && detectionSource.scaleY === 1)
     ? rawPredictions
     : rawPredictions.map((prediction) => rescalePredictionBBox(prediction, detectionSource.scaleX, detectionSource.scaleY));
 }
 
+/**
+ * @returns {Promise<object[]>} Normalized predictions from the AeroYOLO backend.
+ */
 async function detectWithAeroYolo() {
   const session = await ensureDroneDetectSession();
   if (!session) return [];
+  // Resolve the model input/output names from session metadata when possible.
   const inputName = session.inputNames && session.inputNames[0] ? session.inputNames[0] : 'images';
   const outputName = session.outputNames && session.outputNames[0] ? session.outputNames[0] : 'output0';
   const inputMeta = session.inputMetadata && session.inputMetadata[inputName] ? session.inputMetadata[inputName] : null;
@@ -668,6 +868,7 @@ async function detectWithAeroYolo() {
   const modelWidth = Number(dims[3]) || 640;
   const prepared = preprocessDroneDetectSource(modelWidth, modelHeight);
   if (!prepared) return [];
+  // Build the input tensor in the exact shape expected by the model.
   const tensor = new ort.Tensor('float32', prepared.input, [1, 3, modelHeight, modelWidth]);
   const result = await session.run({ [inputName]: tensor });
   const outputTensor = result && result[outputName] ? result[outputName] : null;
@@ -678,6 +879,7 @@ async function detectWithAeroYolo() {
   const predictions = [];
   for (let i = 0; i < rows; i += 1) {
     const offset = i * stride;
+    // Decode each output row into the shared { class, score, bbox } shape.
     const prediction = normalizeDroneModelPrediction(outputTensor.data, offset, prepared);
     if (prediction) predictions.push(prediction);
   }
@@ -685,10 +887,15 @@ async function detectWithAeroYolo() {
 }
 
 // runDetection is the core detection pass: predict, select, update the HUD, log, and export telemetry.
+/**
+ * @returns {Promise<void>} Resolves after one detection pass finishes.
+ */
 async function runDetection() {
+  // Do not overlap detection passes or read from an empty/hidden stream.
   if (isDetecting || !feedImg || !feedImg.src || feedImg.classList.contains('d-none')) return;
   if (!feedImg.complete || feedImg.naturalWidth === 0) return;
   isDetecting = true;
+  // Measure loop duration so the UI can show actual inference cadence.
   const startedAt = performance.now();
   try {
     const settings = getSettings();
@@ -699,6 +906,7 @@ async function runDetection() {
     const selected = chooseCandidate(detections.filter((det) => det.isCandidate && det.metrics));
     const loopMs = performance.now() - startedAt;
     if (!selected) {
+      // Count consecutive misses so the tracker can survive a few short dropouts.
       trackingState.missedFrames += 1;
       if (trackingState.missedFrames >= LOST_LIMIT) clearTargetTelemetry();
       drawScene(detections, null);
@@ -720,11 +928,13 @@ async function runDetection() {
     const targetLogMessage = buildTargetLogMessage(selected);
     const deltaText = ` dx=${trackingState.filteredDeltaX.toFixed(0)} dy=${trackingState.filteredDeltaY.toFixed(0)}`;
     if (selected.isStrong) {
+      // Strong candidates become full danger/target events.
       setDetectStatus('Detect: target', 'bg-danger');
       setSafetyState('danger', 'Air target detected');
       logConsole(targetLogMessage, 'text-danger');
       lastDetectState = 'target';
     } else {
+      // Possible candidates are shown with a warning state but not the full danger state.
       setDetectStatus('Detect: possible', 'bg-warning text-dark');
       setSafetyState('warn', 'Possible air target');
       if (lastDetectState !== 'possible' || lastDetectLabel !== labelText) logConsole(`Possible target: ${labelText}${deltaText}`, 'text-warning');
@@ -763,6 +973,7 @@ async function runDetection() {
     });
   } catch (err) {
     console.error('Detection failed', err);
+    // Try to expose the most useful human-readable reason to the operator.
     const text = err && err.message ? err.message : 'check camera address / stream';
     const corsBlocked = /tainted canvases|cross-origin|cross origin/i.test(text);
     setDetectStatus(corsBlocked ? 'Detect: blocked (CORS)' : 'Detect: error', corsBlocked ? 'bg-warning text-dark' : 'bg-danger');
@@ -779,6 +990,9 @@ async function runDetection() {
 }
 
 // Detection loop scheduling keeps a target cadence while respecting actual inference time.
+/**
+ * @param {'idle'|'error'|string} reason - Why the loop is being stopped.
+ */
 function stopDetectionLoop(reason) {
   detectLoopActive = false;
   if (detectTimer) clearTimeout(detectTimer);
@@ -799,10 +1013,14 @@ function stopDetectionLoop(reason) {
   }
 }
 
+/**
+ * @param {number} delay - Milliseconds to wait before the next detection pass.
+ */
 function scheduleNextDetection(delay) {
   if (!detectLoopActive) return;
   if (detectTimer) clearTimeout(detectTimer);
   detectTimer = setTimeout(async () => {
+    // Measure one loop so the next timeout can compensate for inference time.
     const startedAt = performance.now();
     await runDetection();
     // Keep a roughly fixed cadence: fast frames wait a little, slow frames continue almost immediately.
@@ -810,7 +1028,11 @@ function scheduleNextDetection(delay) {
   }, Math.max(0, delay || 0));
 }
 
+/**
+ * Starts the repeating detection loop if one is not already running.
+ */
 function startDetectionLoop() {
+  // Prevent duplicate loops from being started by repeated load events.
   if (detectLoopActive || !feedImg) return;
   detectLoopActive = true;
   setDetectStatus('Detect: starting', 'bg-warning');
