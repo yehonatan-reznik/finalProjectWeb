@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
 
+
 /* Reading guide:
  * 1. The top defines shared color/design tokens.
  * 2. The middle defines reusable layout, card, form, camera, status, and support components.
@@ -584,6 +585,49 @@ textarea.form-control {
   row-gap: 0.55rem;
 }
 
+.status-panel .form-control,
+.status-panel .form-select {
+  /* Flatten the inner Detection/Calibration controls so the cards do not look like nested boxes. */
+  min-height: auto;
+  padding-inline: 0;
+  padding-block: 0.18rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.status-panel .form-control:focus,
+.status-panel .form-select:focus {
+  background: transparent;
+  border-color: rgba(143, 194, 255, 0.7);
+  box-shadow: none;
+}
+
+.status-panel .input-group-text {
+  padding-inline: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.status-panel .btn.btn-sm {
+  /* Remove button outlines inside the status-side cards while keeping them clickable and readable. */
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.status-panel .btn.btn-sm:hover,
+.status-panel .btn.btn-sm:focus,
+.status-panel .btn.btn-sm:active {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 /* EXAM: console panel. */
 /* === Console ============================================================= */
 .console {
@@ -998,3 +1042,744 @@ footer {
     min-width: 62px;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+CSS FULL EXAM CTRL+F EXPLANATION COMMENT
+
+This CSS file controls the visual design of the SkyShield web dashboard. It does not control detection logic, Firebase logic, ESP32 commands, or JavaScript behavior. It controls colors, fonts, layout, cards, buttons, forms, camera viewport, status indicators, tables, logs, manual page blocks, accordions, footer, and responsive behavior. In the exam, use Ctrl+F to search class names, CSS variables, or section names like --accent, .camera-shell, .status-dot, .metric-card, .console, .table-hud, .page-hero, or @media.
+
+CTRL+F COMMAND: @import
+@import loads external Google Fonts into the CSS file. This file imports IBM Plex Mono for technical/status text and Manrope for normal dashboard text. Without @import, the browser may fall back to default fonts.
+
+CTRL+F COMMAND: IBM Plex Mono
+IBM Plex Mono is the monospace font used for code-like areas such as console logs, status chips, and camera status text. It makes technical values easier to read.
+
+CTRL+F COMMAND: Manrope
+Manrope is the main readable sans-serif font used for the dashboard body text, headings, labels, buttons, and cards.
+
+CTRL+F COMMAND: :root
+:root defines global CSS variables, also called design tokens. These variables store shared colors, borders, and shadow values so the whole app has one consistent design system.
+
+CTRL+F COMMAND: color-scheme
+color-scheme: dark tells the browser that this page is designed as a dark-mode interface. It helps built-in UI pieces like inputs behave better in dark mode.
+
+CTRL+F COMMAND: --bg
+--bg is the darkest main background color of the app. It is used as the deep base tone behind the dashboard.
+
+CTRL+F COMMAND: --bg-soft
+--bg-soft is a slightly lighter background color used behind large page areas so the page is not completely flat.
+
+CTRL+F COMMAND: --surface
+--surface is the main dashboard card/panel color. It is used for card backgrounds and major UI surfaces.
+
+CTRL+F COMMAND: --surface-soft
+--surface-soft is a softer secondary surface color, used for nested panels or quieter sections inside the dashboard.
+
+CTRL+F COMMAND: --surface-strong
+--surface-strong is a stronger surface color used when a panel needs more visual emphasis.
+
+CTRL+F COMMAND: --border
+--border is the default card/container border color.
+
+CTRL+F COMMAND: --border-soft
+--border-soft is a slightly brighter border color, mainly used for inputs and focusable controls.
+
+CTRL+F COMMAND: --text
+--text is the main high-contrast text color. Most primary text uses this.
+
+CTRL+F COMMAND: --muted
+--muted is the secondary text color. It is used for hints, notes, and less important labels.
+
+CTRL+F COMMAND: --muted-strong
+--muted-strong is a brighter muted color. It is used for important secondary text that still should not be as strong as primary text.
+
+CTRL+F COMMAND: --accent
+--accent is the main blue highlight color. It is used for buttons, focus states, active states, and emphasis.
+
+CTRL+F COMMAND: --accent-strong
+--accent-strong is a brighter blue accent used for headings, links, and highlighted text.
+
+CTRL+F COMMAND: --success
+--success is the green color used for safe/ok/success states.
+
+CTRL+F COMMAND: --success-strong
+--success-strong is a stronger green used when success needs more emphasis.
+
+CTRL+F COMMAND: --warn
+--warn is the amber/yellow warning color used for scanning, caution, and possible target states.
+
+CTRL+F COMMAND: --danger
+--danger is the red danger/error color used for target, danger, and error states.
+
+CTRL+F COMMAND: --shadow
+--shadow is the common box-shadow used by cards to give depth and separation from the background.
+
+CTRL+F COMMAND: html, body
+html and body define the global page look. They set full height, dark gradient background, text color, main font, base font size, line height, font smoothing, and readable rendering.
+
+CTRL+F COMMAND: background radial-gradient
+The background uses radial gradients and a linear gradient to make the dark UI look like a modern operations dashboard instead of a flat black page.
+
+CTRL+F COMMAND: font-family
+font-family sets the typeface. The main body uses Manrope, and technical sections use IBM Plex Mono.
+
+CTRL+F COMMAND: font-size
+font-size controls text size. The global font size is 16.5px, and responsive media rules reduce it on phones.
+
+CTRL+F COMMAND: line-height
+line-height controls vertical spacing between text lines. 1.6 makes long text easier to read.
+
+CTRL+F COMMAND: -webkit-font-smoothing
+-webkit-font-smoothing makes text appear smoother on WebKit-based browsers.
+
+CTRL+F COMMAND: text-rendering
+text-rendering: optimizeLegibility asks the browser to prioritize readable text rendering.
+
+CTRL+F COMMAND: body
+body sets letter-spacing to 0, meaning normal spacing between letters.
+
+CTRL+F COMMAND: p, li, label, input, select, textarea, button, th, td
+This group sets many common text elements to font-size: 1rem so text sizing stays consistent across paragraphs, labels, inputs, buttons, and table cells.
+
+CTRL+F COMMAND: small, .small
+small and .small make small text slightly smaller using 0.91rem.
+
+CTRL+F COMMAND: .text-muted
+.text-muted overrides Bootstrap muted text so it uses the app variable --muted.
+
+CTRL+F COMMAND: code, pre, .console, .status-chip, .camera-status-text
+This group applies the IBM Plex Mono font to code-like elements, console logs, status chips, and camera status text.
+
+CTRL+F COMMAND: .link-hud
+.link-hud styles dashboard links. It uses accent color, removes underline, and makes the link font weight stronger.
+
+CTRL+F COMMAND: .link-hud:hover
+.link-hud:hover changes the link color on hover to show it is interactive.
+
+CTRL+F COMMAND: .text-hud
+.text-hud applies the brighter accent text color.
+
+CTRL+F COMMAND: .tracking-wide
+.tracking-wide increases letter spacing. It is useful for small uppercase labels.
+
+CTRL+F COMMAND: .navbar
+.navbar styles the top navigation bar. It uses a dark transparent background, blur, subtle border, and shadow so the navbar floats above the page.
+
+CTRL+F COMMAND: backdrop-filter
+backdrop-filter: blur gives the navbar a glass-like blurred background effect.
+
+CTRL+F COMMAND: .navbar-brand
+.navbar-brand styles the app/site name in the navbar. It uses strong weight, main text color, and compact sizing.
+
+CTRL+F COMMAND: .navbar .nav-link
+.navbar .nav-link styles normal nav links with muted color and bold weight.
+
+CTRL+F COMMAND: .navbar .nav-link:hover
+.navbar .nav-link:hover makes nav links brighter when hovered.
+
+CTRL+F COMMAND: .navbar .nav-link.active
+.navbar .nav-link.active makes the active page link brighter.
+
+CTRL+F COMMAND: .navbar-toggler
+.navbar-toggler styles the mobile menu button border.
+
+CTRL+F COMMAND: .card-hud
+.card-hud is the main reusable dashboard card style. It gives panels a dark gradient background, border, rounded corners, and shared shadow.
+
+CTRL+F COMMAND: .card-hud.card
+.card-hud.card applies the same dashboard card style when the element is also a Bootstrap .card.
+
+CTRL+F COMMAND: .card-hud .card-header
+.card-hud .card-header styles the top part of a dashboard card. It adds padding, subtle background, border-bottom, and readable font size.
+
+CTRL+F COMMAND: .card-hud .card-body
+.card-hud .card-body sets the internal card content padding.
+
+CTRL+F COMMAND: .card-hud .card-footer
+.card-hud .card-footer styles the bottom part of a card with padding, subtle background, and top border.
+
+CTRL+F COMMAND: .form-label
+.form-label styles form labels. It uses brighter muted text and bold weight.
+
+CTRL+F COMMAND: .form-control
+.form-control styles text inputs and textareas. It gives them dark background, border, rounded corners, readable text color, and minimum height.
+
+CTRL+F COMMAND: .form-select
+.form-select styles dropdowns to match the dark dashboard theme.
+
+CTRL+F COMMAND: .form-control-hud.form-control
+.form-control-hud.form-control is a custom HUD input style that extends Bootstrap form controls with the same dark look.
+
+CTRL+F COMMAND: textarea.form-control
+textarea.form-control gives textareas a minimum height of 150px.
+
+CTRL+F COMMAND: .form-control::placeholder
+.form-control::placeholder styles placeholder text using muted color.
+
+CTRL+F COMMAND: .form-text
+.form-text styles helper text below form fields using muted color.
+
+CTRL+F COMMAND: .form-control:focus
+.form-control:focus styles focused inputs. It changes the border to blue accent and adds a subtle blue glow.
+
+CTRL+F COMMAND: .form-select:focus
+.form-select:focus styles focused dropdowns with the same accent border and glow.
+
+CTRL+F COMMAND: box-shadow
+box-shadow is used for focus rings and card depth. In focus styles, it creates a blue glow. In --shadow, it creates card depth.
+
+CTRL+F COMMAND: .input-group-text
+.input-group-text styles Bootstrap input group labels/addons so they match the dark UI.
+
+CTRL+F COMMAND: .form-check-input
+.form-check-input styles checkboxes/radio buttons. It sets size, background, and border.
+
+CTRL+F COMMAND: .form-check-input:checked
+.form-check-input:checked changes checked boxes to the blue accent color.
+
+CTRL+F COMMAND: .form-check-label
+.form-check-label styles labels next to checkboxes.
+
+CTRL+F COMMAND: .btn
+.btn styles all buttons. It makes buttons tall, rounded, bold, touch-friendly, and consistent.
+
+CTRL+F COMMAND: .btn-sm
+.btn-sm styles smaller buttons with lower height and smaller font.
+
+CTRL+F COMMAND: .btn-success
+.btn-success overrides Bootstrap success buttons. In this design, success buttons use the blue accent instead of green, because blue is the main action color.
+
+CTRL+F COMMAND: --bs-btn-bg
+--bs-btn-bg is a Bootstrap button CSS variable. This file overrides it to customize Bootstrap button colors.
+
+CTRL+F COMMAND: .btn-outline-success
+.btn-outline-success styles outline success buttons with accent borders and dark hover background.
+
+CTRL+F COMMAND: .btn-outline-info
+.btn-outline-info styles outline info buttons with blue-ish borders and hover effects.
+
+CTRL+F COMMAND: .btn-outline-secondary
+.btn-outline-secondary styles secondary outline buttons with muted colors.
+
+CTRL+F COMMAND: .btn-outline-light
+.btn-outline-light styles light outline buttons to work on dark backgrounds.
+
+CTRL+F COMMAND: .btn-outline-danger
+.btn-outline-danger styles danger outline buttons with red borders and soft red hover background.
+
+CTRL+F COMMAND: .btn-outline-warning
+.btn-outline-warning styles warning outline buttons with amber colors.
+
+CTRL+F COMMAND: .btn-danger
+.btn-danger styles solid danger buttons using the --danger red variable.
+
+CTRL+F COMMAND: .hud-button
+.hud-button adds animation transitions to dashboard buttons.
+
+CTRL+F COMMAND: .hud-button:hover
+.hud-button:hover moves the button slightly upward when hovered, making it feel interactive.
+
+CTRL+F COMMAND: .hud-button.active
+.hud-button.active moves the button slightly downward, like it is pressed.
+
+CTRL+F COMMAND: .hud-glow:hover
+.hud-glow:hover adds a soft blue glow when hovered.
+
+CTRL+F COMMAND: .direction-pad .btn
+.direction-pad .btn gives direction buttons a minimum width so the manual controller buttons are easy to press.
+
+CTRL+F COMMAND: .login-page
+.login-page styles the login page background with dark gradients and soft accent glows.
+
+CTRL+F COMMAND: .login-shell
+.login-shell limits the login page width and centers it.
+
+CTRL+F COMMAND: .login-panel
+.login-panel limits the login form width and centers the panel.
+
+CTRL+F COMMAND: .page-shell
+.page-shell is the main content width limiter. It prevents content from stretching too wide on large monitors and adds horizontal padding.
+
+CTRL+F COMMAND: .page-shell-wide
+.page-shell-wide is a wider page container version for pages that need more horizontal space.
+
+CTRL+F COMMAND: .page-stack
+.page-stack adds bottom padding to stacked page content.
+
+CTRL+F COMMAND: .page-hero
+.page-hero styles the repeated top summary/introduction card. It uses a brighter dark fill and padding so the page intro stands out.
+
+CTRL+F COMMAND: .page-hero::after
+.page-hero::after is disabled with display: none, meaning no decorative after-element appears.
+
+CTRL+F COMMAND: .page-copy
+.page-copy limits text width so long paragraphs stay readable.
+
+CTRL+F COMMAND: .page-hero h1
+.page-hero h1 styles hero headings with responsive size, strong color, and tight spacing.
+
+CTRL+F COMMAND: clamp()
+clamp() in CSS creates responsive sizes. For example, the hero heading font-size can grow between a minimum and maximum depending on screen width.
+
+CTRL+F COMMAND: .page-hero p
+.page-hero p styles hero paragraph text with muted color and normal size.
+
+CTRL+F COMMAND: .hero-kicker
+.hero-kicker styles the small uppercase label above hero headings. It uses accent color, bold text, letter spacing, and inline-flex layout.
+
+CTRL+F COMMAND: .hero-kicker::before
+.hero-kicker::before creates the small blue dot before the kicker label.
+
+CTRL+F COMMAND: .chip-row
+.chip-row creates a flexible row of chips that can wrap to the next line.
+
+CTRL+F COMMAND: .support-chip
+.support-chip styles small pill chips with border, background, rounded corners, muted text, and bold weight.
+
+CTRL+F COMMAND: .metric-grid
+.metric-grid is a CSS grid container for metric cards. It creates consistent gaps between cards.
+
+CTRL+F COMMAND: .metric-grid-compact
+.metric-grid-compact makes compact metric cards automatically fit using repeat(auto-fit, minmax(150px, 1fr)).
+
+CTRL+F COMMAND: .metric-card
+.metric-card styles compact value cards used for quick status values. It uses padding, subtle background, border, and rounded corners.
+
+CTRL+F COMMAND: .metric-card-label
+.metric-card-label styles the small uppercase label inside a metric card.
+
+CTRL+F COMMAND: .metric-card-value
+.metric-card-value styles the main value inside a metric card. It is bold, bright, and readable.
+
+CTRL+F COMMAND: .metric-card-note
+.metric-card-note styles small explanatory text under a metric value.
+
+CTRL+F COMMAND: .camera-toolbar
+.camera-toolbar is the layout container for the camera controls. It uses grid layout so controls wrap cleanly.
+
+CTRL+F COMMAND: .camera-toolbar-row
+.camera-toolbar-row is a flex row for camera toolbar items. It aligns items center and allows wrapping.
+
+CTRL+F COMMAND: .camera-url-group
+.camera-url-group limits the camera URL input group width to 360px or full width on smaller screens.
+
+CTRL+F COMMAND: .camera-toolbar-note
+.camera-toolbar-note makes helper notes take full toolbar width.
+
+CTRL+F COMMAND: .camera-shell
+.camera-shell is the framed viewport around the live camera stream and overlay. It uses a dark background, border, rounded corners, and overflow hidden.
+
+CTRL+F COMMAND: overflow: hidden
+overflow: hidden clips content that goes outside rounded containers, important for .camera-shell.
+
+CTRL+F COMMAND: .camera-status-text
+.camera-status-text styles camera status as monospace, uppercase, bold operational text.
+
+CTRL+F COMMAND: text-transform: uppercase
+text-transform: uppercase makes text display in uppercase, used for status labels and technical UI labels.
+
+CTRL+F COMMAND: .status-dot
+.status-dot is the small circular status indicator. It is used for safe/warn/danger states.
+
+CTRL+F COMMAND: .status-ok
+.status-ok colors the status dot green using --success.
+
+CTRL+F COMMAND: .status-warn
+.status-warn colors the status dot amber using --warn.
+
+CTRL+F COMMAND: .status-danger
+.status-danger colors the status dot red using --danger.
+
+CTRL+F COMMAND: .status-panel .status-label
+.status-panel .status-label styles labels inside status panels with muted uppercase text.
+
+CTRL+F COMMAND: .status-panel .status-grid-label
+.status-panel .status-grid-label styles labels inside grid status layouts.
+
+CTRL+F COMMAND: .status-panel .status-value
+.status-panel .status-value styles the actual status values. It uses bright text and bold weight.
+
+CTRL+F COMMAND: .status-panel .status-grid-value
+.status-panel .status-grid-value styles status values inside grid layouts.
+
+CTRL+F COMMAND: .status-panel .status-emphasis
+.status-panel .status-emphasis gives extra bold emphasis to important status text.
+
+CTRL+F COMMAND: .status-panel .status-grid
+.status-panel .status-grid sets row spacing for grid-based status panels.
+
+CTRL+F COMMAND: .console
+.console styles the event log panel. It has fixed min/max height, scroll overflow, monospace font, readable color, and tabular numbers.
+
+CTRL+F COMMAND: overflow: auto
+overflow: auto makes the console scroll when there are too many log lines.
+
+CTRL+F COMMAND: font-variant-numeric: tabular-nums
+font-variant-numeric: tabular-nums makes numbers line up evenly, useful for timestamps and logs.
+
+CTRL+F COMMAND: .console > div
+.console > div styles each log row with padding and a subtle bottom border.
+
+CTRL+F COMMAND: .console > div:last-child
+.console > div:last-child removes the border from the final log line.
+
+CTRL+F COMMAND: .table-hud.table
+.table-hud.table customizes Bootstrap tables for the dark HUD. It removes white table backgrounds and sets dark-compatible colors.
+
+CTRL+F COMMAND: --bs-table-bg
+--bs-table-bg is a Bootstrap table variable. Setting it to transparent prevents white Bootstrap table cells.
+
+CTRL+F COMMAND: --bs-table-color
+--bs-table-color sets the table text color.
+
+CTRL+F COMMAND: --bs-table-border-color
+--bs-table-border-color sets table border color.
+
+CTRL+F COMMAND: table-layout: fixed
+table-layout: fixed makes table columns follow fixed layout rules instead of resizing unpredictably.
+
+CTRL+F COMMAND: .table-hud thead th
+.table-hud thead th styles table header cells with muted uppercase bold text.
+
+CTRL+F COMMAND: .table-hud tbody td
+.table-hud tbody td styles table body cells with padding, border color, and top vertical alignment.
+
+CTRL+F COMMAND: .table-hud.log-table thead th:nth-child(1)
+This targets the first column in log tables and gives it a fixed width, usually for timestamps.
+
+CTRL+F COMMAND: .table-hud.log-table tbody td:nth-child(1)
+This targets the first body column in log tables and gives it matching width and tabular numbers.
+
+CTRL+F COMMAND: nth-child
+nth-child selects a specific child column or element by number. This CSS uses it to size table columns.
+
+CTRL+F COMMAND: .table-hud.log-table thead th:nth-child(2)
+This sets the width of the second log table column.
+
+CTRL+F COMMAND: .table-hud.log-table thead th:nth-child(3)
+This sets the width of the third log table column.
+
+CTRL+F COMMAND: .table-hud.log-table thead th:nth-child(4)
+This sets the width of the fourth log table column.
+
+CTRL+F COMMAND: white-space: normal
+white-space: normal allows text to wrap onto multiple lines.
+
+CTRL+F COMMAND: overflow-wrap: anywhere
+overflow-wrap: anywhere allows long text to break anywhere so it does not overflow the table.
+
+CTRL+F COMMAND: .log-toolbar
+.log-toolbar is a grid container for log page controls.
+
+CTRL+F COMMAND: .table-frame
+.table-frame controls table overflow. On desktop it clips horizontal overflow, and on tablet it becomes scrollable.
+
+CTRL+F COMMAND: .log-filter-row
+.log-filter-row is a flex row for log filter buttons and allows wrapping.
+
+CTRL+F COMMAND: .log-filter
+.log-filter styles log filter buttons as small rounded pills.
+
+CTRL+F COMMAND: .log-filter.active
+.log-filter.active styles the selected/active log filter with blue background and accent border.
+
+CTRL+F COMMAND: .status-chip
+.status-chip is a reusable pill status indicator used in lists or logs. It has inline-flex layout, small text, uppercase letters, and rounded pill shape.
+
+CTRL+F COMMAND: .status-chip::before
+.status-chip::before creates a small dot inside the chip using currentColor.
+
+CTRL+F COMMAND: currentColor
+currentColor means the pseudo-element uses the same color as the text color of the status chip.
+
+CTRL+F COMMAND: .status-chip-success
+.status-chip-success styles success chips with green text, green transparent background, and green border.
+
+CTRL+F COMMAND: .status-chip-info
+.status-chip-info styles info chips with blue text, blue transparent background, and blue border.
+
+CTRL+F COMMAND: .status-chip-warn
+.status-chip-warn styles warning chips with amber colors.
+
+CTRL+F COMMAND: .status-chip-danger
+.status-chip-danger styles danger chips with red colors.
+
+CTRL+F COMMAND: .status-chip-muted
+.status-chip-muted styles neutral/muted chips with gray colors.
+
+CTRL+F COMMAND: .side-card-stack
+.side-card-stack creates a vertical grid stack with consistent spacing between side cards.
+
+CTRL+F COMMAND: .soft-list
+.soft-list removes normal list styling and turns a list into a clean grid stack.
+
+CTRL+F COMMAND: list-style: none
+list-style: none removes default bullet points.
+
+CTRL+F COMMAND: .soft-list li
+.soft-list li styles each list item as a soft card row with padding, background, border, rounded corners, and muted text.
+
+CTRL+F COMMAND: .soft-list strong
+.soft-list strong makes the first important text inside a soft list item bright and bold.
+
+CTRL+F COMMAND: .note-panel
+.note-panel styles a soft note box with padding, background, border, and rounded corners.
+
+CTRL+F COMMAND: .section-block
+.section-block uses the same style as note-panel for grouped content sections.
+
+CTRL+F COMMAND: .option-group
+.option-group creates a nested darker sub-surface inside a larger card. It is useful for settings and calibration groups.
+
+CTRL+F COMMAND: .form-check-stack
+.form-check-stack makes a vertical grid stack for checkbox/radio card options.
+
+CTRL+F COMMAND: .form-check-card
+.form-check-card styles checkbox/radio options as full card rows. It uses flex layout, padding, border, rounded corners, and hover animation.
+
+CTRL+F COMMAND: .form-check-card:hover
+.form-check-card:hover changes background and border color to show the option is interactive.
+
+CTRL+F COMMAND: .form-check-card .form-check-input
+This styles the checkbox inside a card so it aligns correctly and does not shift down.
+
+CTRL+F COMMAND: .form-check-card .form-check-label
+This styles the label inside a form-check-card with stronger weight.
+
+CTRL+F COMMAND: .section-title
+.section-title styles small uppercase section headings with accent color and letter spacing.
+
+CTRL+F COMMAND: .support-grid
+.support-grid creates a responsive grid for support/info cards. It uses auto-fit and minmax so cards wrap nicely.
+
+CTRL+F COMMAND: repeat(auto-fit, minmax(260px, 1fr))
+repeat(auto-fit, minmax(260px, 1fr)) creates a responsive grid where each item is at least 260px and expands to fill available space.
+
+CTRL+F COMMAND: .hidden-ui
+.hidden-ui forces an element to be hidden using display: none !important.
+
+CTRL+F COMMAND: !important
+!important gives a CSS rule higher priority. Here it ensures .hidden-ui really hides the element.
+
+CTRL+F COMMAND: .note-panel p:last-child
+.note-panel p:last-child removes bottom margin from the final paragraph so the note box spacing looks clean.
+
+CTRL+F COMMAND: .section-block p:last-child
+.section-block p:last-child removes bottom margin from the final paragraph in a section block.
+
+CTRL+F COMMAND: .manual-step-grid
+.manual-step-grid creates a vertical grid for manual page step cards.
+
+CTRL+F COMMAND: .manual-step-card
+.manual-step-card styles a manual instruction card. It uses a two-column grid: icon on the left, explanation on the right.
+
+CTRL+F COMMAND: grid-template-columns: 46px 1fr
+grid-template-columns: 46px 1fr creates two columns: a fixed 46px icon column and a flexible text column.
+
+CTRL+F COMMAND: .manual-step-icon
+.manual-step-icon styles the square icon box inside a manual step card.
+
+CTRL+F COMMAND: .manual-step-card h3
+.manual-step-card h3 styles the title inside a manual step card.
+
+CTRL+F COMMAND: .manual-step-card p
+.manual-step-card p styles the paragraph inside a manual step card with muted color and smaller font.
+
+CTRL+F COMMAND: .accordion.card-hud
+.accordion.card-hud removes default background/border from the accordion wrapper so it fits the HUD card style.
+
+CTRL+F COMMAND: .accordion-item.card-hud
+.accordion-item.card-hud styles each accordion item with dark background behavior and subtle border.
+
+CTRL+F COMMAND: .accordion-button
+.accordion-button styles Bootstrap accordion buttons to match the dark dashboard theme.
+
+CTRL+F COMMAND: .accordion-button.collapsed
+.accordion-button.collapsed keeps collapsed accordion buttons readable with main text color.
+
+CTRL+F COMMAND: .accordion-button:focus
+.accordion-button:focus adds an accent focus ring for keyboard accessibility.
+
+CTRL+F COMMAND: .accordion-button:not(.collapsed)
+.accordion-button:not(.collapsed) styles the open accordion header with a slightly brighter background.
+
+CTRL+F COMMAND: .accordion-body
+.accordion-body styles the content area of an accordion with dark background and readable muted text.
+
+CTRL+F COMMAND: footer
+footer adds a subtle top border to separate the footer from the page content.
+
+CTRL+F COMMAND: .footer-links
+.footer-links lays out footer links in a centered flex row that wraps on smaller screens.
+
+CTRL+F COMMAND: @media (max-width: 991.98px)
+@media (max-width: 991.98px) is the tablet breakpoint. These rules apply when the screen is 991.98px wide or smaller.
+
+CTRL+F COMMAND: tablet breakpoint
+The tablet breakpoint reduces page padding, adjusts hero spacing, makes compact metric grids one column, and lets log tables scroll horizontally.
+
+CTRL+F COMMAND: .page-shell in media
+Inside the tablet media query, .page-shell and .page-shell-wide become full width with 1rem horizontal padding.
+
+CTRL+F COMMAND: .metric-grid-compact in media
+Inside the tablet media query, .metric-grid-compact becomes one column.
+
+CTRL+F COMMAND: .table-hud.log-table in media
+Inside the tablet media query, log tables switch to table-layout: auto so columns adapt better.
+
+CTRL+F COMMAND: .table-frame in media
+Inside the tablet media query, .table-frame gets overflow-x: auto so wide tables can scroll horizontally.
+
+CTRL+F COMMAND: @media (max-width: 767.98px)
+@media (max-width: 767.98px) is the phone breakpoint. These rules apply when the screen is 767.98px wide or smaller.
+
+CTRL+F COMMAND: phone breakpoint
+The phone breakpoint reduces base font size, tightens card padding, reduces page-stack bottom spacing, and makes direction buttons narrower.
+
+CTRL+F COMMAND: html, body in phone media
+Inside the phone media query, html and body font-size becomes 15px to fit smaller screens.
+
+CTRL+F COMMAND: .card-hud .card-body in phone media
+Inside the phone media query, card body/header/footer horizontal padding becomes smaller to save space.
+
+CTRL+F COMMAND: .direction-pad .btn in phone media
+Inside the phone media query, direction buttons get a smaller min-width of 62px.
+
+CTRL+F COMMAND: display: grid
+display: grid is used for structured layouts such as metric grids, manual step cards, support grids, and page stacks.
+
+CTRL+F COMMAND: display: flex
+display: flex is used for rows like navbar links, toolbar rows, status values, chips, and footer links.
+
+CTRL+F COMMAND: border-radius
+border-radius controls rounded corners. This design uses rounded cards, buttons, inputs, chips, and panels to make the UI modern.
+
+CTRL+F COMMAND: rgba
+rgba colors include transparency. This CSS uses rgba often for subtle borders, backgrounds, shadows, and hover effects.
+
+CTRL+F COMMAND: linear-gradient
+linear-gradient creates smooth color transitions, used for page background and card surfaces.
+
+CTRL+F COMMAND: border
+border creates visible outlines around cards, inputs, panels, chips, and viewport containers.
+
+CTRL+F COMMAND: padding
+padding creates internal spacing inside buttons, cards, panels, chips, and sections.
+
+CTRL+F COMMAND: margin
+margin creates external spacing between elements. Many headings and paragraphs set margin to keep layout clean.
+
+CTRL+F COMMAND: gap
+gap creates spacing between flex/grid children. It is used instead of many individual margins.
+
+CTRL+F COMMAND: min-height
+min-height ensures elements like buttons, inputs, console, and page body stay usable and readable.
+
+CTRL+F COMMAND: max-height
+max-height limits elements like the console so repeated logs do not stretch the page forever.
+
+CTRL+F COMMAND: width: min()
+width: min(100%, 1480px) means use 100% width until the page reaches 1480px, then stop growing.
+
+CTRL+F COMMAND: margin-inline: auto
+margin-inline: auto horizontally centers fixed-width containers.
+
+CTRL+F COMMAND: padding-inline
+padding-inline controls left and right padding in a writing-mode-friendly way.
+
+CTRL+F COMMAND: text-align
+There is not much direct text-align here because layout uses flex/grid, but text alignment is indirectly handled by containers and status value justify-content.
+
+CTRL+F COMMAND: justify-content
+justify-content controls horizontal alignment in flex/grid layouts. Example: status values use justify-content: flex-end.
+
+CTRL+F COMMAND: align-items
+align-items controls vertical alignment in flex/grid layouts.
+
+CTRL+F COMMAND: flex-wrap
+flex-wrap: wrap lets items move to the next line instead of overflowing on small screens.
+
+CTRL+F COMMAND: border-bottom
+border-bottom creates separators under navbar, card headers, console rows, and footer sections.
+
+CTRL+F COMMAND: border-top
+border-top creates separators above card footers and footer.
+
+CTRL+F COMMAND: hover
+hover rules change style when the mouse is over an element. Used for links, buttons, cards, filters, and form-check cards.
+
+CTRL+F COMMAND: focus
+focus rules style keyboard/input focus. They are important for accessibility and showing the active input/control.
+
+CTRL+F COMMAND: active
+active rules style elements that are selected or currently pressed, like .hud-button.active and .log-filter.active.
+
+CTRL+F COMMAND: collapsed
+collapsed is a Bootstrap accordion state. The CSS styles accordion buttons differently when collapsed or open.
+
+CTRL+F COMMAND: d-none
+d-none is not defined here but is a Bootstrap utility class used in JavaScript to hide elements. This CSS has .hidden-ui for a similar force-hide behavior.
+
+CTRL+F COMMAND: Bootstrap override
+This CSS overrides Bootstrap classes like .btn, .card, .form-control, .form-select, .accordion-button, and .table so the app keeps a dark HUD design instead of default Bootstrap light styling.
+
+CTRL+F COMMAND: design tokens
+Design tokens are the CSS variables in :root. They make the theme consistent because many selectors reuse the same variables like --text, --muted, --accent, --border, and --danger.
+
+CTRL+F COMMAND: surface
+Surface means a panel/card background layer. Variables like --surface, --surface-soft, and --surface-strong define different dark panel levels.
+
+CTRL+F COMMAND: accent
+Accent means the main highlight color. In this project, the accent is blue and is used for focus, buttons, headings, active states, and important UI details.
+
+CTRL+F COMMAND: camera
+Camera-related CSS includes .camera-toolbar, .camera-toolbar-row, .camera-url-group, .camera-toolbar-note, .camera-shell, and .camera-status-text. These style the live camera control area and viewport.
+
+CTRL+F COMMAND: status
+Status-related CSS includes .status-dot, .status-ok, .status-warn, .status-danger, .status-panel, .status-chip, and status chip variants. These show safe/warn/danger/info states visually.
+
+CTRL+F COMMAND: metric
+Metric-related CSS includes .metric-grid, .metric-grid-compact, .metric-card, .metric-card-label, .metric-card-value, and .metric-card-note. These create compact dashboard value cards.
+
+CTRL+F COMMAND: console
+Console CSS styles the event log area where JavaScript messages are displayed to the operator.
+
+CTRL+F COMMAND: table
+Table CSS styles dark HUD tables and log tables, including column widths and wrapping behavior.
+
+CTRL+F COMMAND: responsive
+Responsive CSS is controlled by @media rules. Tablet rules start at max-width 991.98px. Phone rules start at max-width 767.98px.
+
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
+/* @import loads external Google Fonts.
+   This project imports IBM Plex Mono for technical/console text
+   and Manrope for the main dashboard text. */
+
+
+CTRL+F COMMAND: exam summary
+If asked what this CSS file does: It builds a dark responsive dashboard theme for SkyShield. It defines shared design tokens, applies global typography, overrides Bootstrap components, styles cards/buttons/forms, creates camera viewport styling, shows status indicators, formats console logs and tables, supports manual/instruction pages, and adapts layout for tablets and phones.
+*/
