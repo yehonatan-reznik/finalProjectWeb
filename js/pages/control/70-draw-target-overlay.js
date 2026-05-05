@@ -1,4 +1,4 @@
-// FILE ROLE: 70-detection-overlay.js
+// FILE ROLE: 70-draw-target-overlay.js
 // What this file does:
 // - Draws detection results on the overlay canvas.
 // - Updates the visible detector readouts after one target is selected.

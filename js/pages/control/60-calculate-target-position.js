@@ -1,4 +1,4 @@
-// FILE ROLE: 60-detection-geometry.js
+// FILE ROLE: 60-calculate-target-position.js
 // What this file does:
 // - Converts raw model bounding boxes into screen-space values the UI can use.
 // - Calculates center points, deltas from screen center, normalized offsets, and smoothed target motion.

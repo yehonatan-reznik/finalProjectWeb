@@ -1,4 +1,4 @@
-// FILE ROLE: 50-detection-state.js
+// FILE ROLE: 50-detection-state-settings.js
 // What this file does:
 // - Defines detection configuration such as backend choices, profiles, thresholds, and timing constants.
 // - Stores live detection state such as the current tracked target and the telemetry session array.

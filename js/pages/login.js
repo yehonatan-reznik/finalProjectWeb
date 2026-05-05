@@ -52,7 +52,7 @@
 
   // EXAM: submit login flow.
   async function handleLogin() {
-    setLoading(true, 'Authenticating...');
+    setLoading(true, 'Signing in...');
     const result = await window.SkyShieldAuth.loginWithEmail(emailInput.value, passwordInput.value);
     setLoading(false);
 
@@ -74,7 +74,7 @@
     if (isLoading && label) {
       submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${label}`;
     } else if (!isLoading) {
-      submitBtn.innerHTML = '<i class="bi bi-shield-lock me-2"></i>Authenticate';
+      submitBtn.innerHTML = '<i class="bi bi-shield-lock me-2"></i>Sign In';
     }
   }
 

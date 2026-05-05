@@ -361,3 +361,466 @@ function updateOperatorAssistReadout() {
   setReadout(assistButtonVal, buttonParts.join(' / '));
   setReadout(assistCenterVal, trackingState.isPossible ? 'Off-center (possible)' : 'Off-center');
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+EXAM COMMENT GLOSSARY FOR 20-calibration.js CALIBRATION AND OPERATOR ASSIST
+
+20-calibration.js:
+This file handles calibration and operator-assist logic. It does not run AI detection and does not send automatic movement. It translates physical rig behavior into readable UI guidance, so the operator can understand what direction the rig moves and which manual button matches detector guidance.
+
+calibration:
+Calibration means checking what the real rig does when the firmware moves X or Y. The code needs this because a command like X+ might physically move left, right, up, or down depending on wiring, servo mounting, and firmware polarity.
+
+operator assist:
+Operator assist is the UI guidance that tells the user where the target is and what manual movement/button would help center it. It is guidance only.
+
+normalizeObservedDirection:
+Cleans a direction value. It only accepts left, right, up, down. Anything else becomes unknown. This prevents invalid saved data or broken select-box values from entering calibration logic.
+
+value:
+The raw direction text from saved calibration or from a dropdown.
+
+['left', 'right', 'up', 'down'].includes(value):
+Checks whether value is one of the four valid movement directions.
+
+unknown:
+Fallback direction used when calibration is missing, invalid, or incomplete.
+
+getOppositeDirection:
+Returns the opposite physical direction. left becomes right, right becomes left, up becomes down, and down becomes up. If the direction is unknown, it returns unknown.
+
+direction:
+The direction that needs to be flipped.
+
+switch:
+JavaScript structure used to return different values depending on direction.
+
+axisRoleFromDirection:
+Decides whether an observed movement belongs to pan, tilt, or unknown. left/right means pan. up/down means tilt. unknown means the axis role cannot be determined.
+
+pan:
+Horizontal movement axis. Pan means left/right movement.
+
+tilt:
+Vertical movement axis. Tilt means up/down movement.
+
+friendlyDirection:
+Turns known directions into uppercase display labels, like LEFT, RIGHT, UP, DOWN. If the direction is invalid or unknown, it returns unknown.
+
+direction.toUpperCase:
+Converts text to uppercase for cleaner UI labels.
+
+commandDirectionFromRawPositive:
+Combines observed positive-axis direction with firmware polarity. It answers: “If this command is sent, what real physical direction will the rig move?”
+
+rawPositiveDirection:
+The physical movement observed when the positive side of an axis was tested, for example X+ moved left.
+
+signedFactor:
+Firmware polarity multiplier. Positive keeps the direction. Negative flips it.
+
+raw:
+The cleaned observed positive direction after normalizeObservedDirection.
+
+signedFactor >= 0:
+Means keep the original observed direction.
+
+getOppositeDirection(raw):
+Used when polarity is negative, so the movement direction flips.
+
+parseSimLabel:
+Parses detector movement labels like LEFT_SMALL, RIGHT_MED, UP_LARGE, or HOLD. It converts the label into direction, size, and suggested number of taps.
+
+label:
+The simulated movement label produced by detection logic.
+
+HOLD:
+Means no movement is needed on that axis because the target is close enough to center.
+
+directionRaw:
+The first part of a movement label before the underscore. Example: LEFT in LEFT_SMALL.
+
+sizeRaw:
+The second part of a movement label after the underscore. Example: SMALL in LEFT_SMALL.
+
+String(label).split('_'):
+Splits labels like LEFT_SMALL into two parts: LEFT and SMALL.
+
+direction:
+Lowercase movement direction from the label.
+
+size:
+Uppercase movement size from the label. Usually SMALL, MED, or LARGE.
+
+taps:
+Suggested number of manual button taps. SMALL gives 1 tap, MED gives 2 taps, LARGE gives 3 taps.
+
+size === 'LARGE' ? 3 : size === 'MED' ? 2 : 1:
+Ternary logic that converts movement size into tap count.
+
+readCalibrationFromControls:
+Reads the X+ and Y+ calibration dropdowns from the page and saves the cleaned values into controllerState.calibration.
+
+controllerState:
+Shared controller-related state object. It stores controller config and calibration notes.
+
+controllerState.calibration:
+Object storing the operator’s calibration observations.
+
+xPositiveObserved:
+The observed physical direction when X positive was tested.
+
+yPositiveObserved:
+The observed physical direction when Y positive was tested.
+
+xObservedSelect:
+Dropdown where the operator selects what X+ physically did.
+
+yObservedSelect:
+Dropdown where the operator selects what Y+ physically did.
+
+writeCalibrationControls:
+Writes the saved calibration values back into the dropdowns. Used when the page loads or calibration resets.
+
+loadCalibration:
+Loads saved calibration notes from localStorage. If saved JSON is broken or missing, it uses safe unknown values.
+
+saved:
+Parsed calibration object loaded from localStorage.
+
+JSON.parse:
+Converts a JSON string back into a JavaScript object.
+
+localStorage.getItem:
+Reads saved data from browser localStorage.
+
+ASSIST_CALIBRATION_STORAGE_KEY:
+localStorage key where calibration notes are saved.
+
+try/catch in loadCalibration:
+Prevents broken saved JSON from crashing the page.
+
+console.warn:
+Logs a warning in the browser console without stopping the app.
+
+saveCalibration:
+Saves the current calibration dropdown values into localStorage. It can also write a confirmation message to the event console.
+
+logChange:
+Boolean parameter. If true, saveCalibration logs a confirmation message. If false, it saves quietly.
+
+readCalibrationFromControls in saveCalibration:
+Copies the current dropdown values into controllerState before saving.
+
+localStorage.setItem:
+Saves a string value in browser storage.
+
+JSON.stringify:
+Converts controllerState.calibration into a JSON string for localStorage.
+
+Calibration saved:
+Console message showing saved X+ and Y+ observations.
+
+resetCalibration:
+Clears saved calibration notes and resets both X+ and Y+ observations to unknown.
+
+localStorage.removeItem:
+Deletes saved calibration from browser storage.
+
+writeCalibrationControls in resetCalibration:
+Updates the dropdowns so they visually show unknown after reset.
+
+getControllerConfigNumber:
+Safely parses a controller config value into an integer. If parsing fails, it returns a fallback.
+
+value:
+Raw config value from controller config. It might be a number or a string.
+
+fallback:
+Default value used if parsing fails.
+
+Number.parseInt(value, 10):
+Parses value as a base-10 integer.
+
+Number.isFinite:
+Checks whether the parsed number is valid and not NaN or Infinity.
+
+deriveCalibration:
+The main calibration interpretation function. It combines operator observations with firmware polarity values and produces real movement meaning for commands and buttons.
+
+xObserved:
+Cleaned physical direction observed when X+ was probed.
+
+yObserved:
+Cleaned physical direction observed when Y+ was probed.
+
+xRole:
+Whether X behaves like pan, tilt, or unknown.
+
+yRole:
+Whether Y behaves like pan, tilt, or unknown.
+
+xDir:
+Firmware polarity multiplier for X axis. Read from controllerState.config.x_dir. Defaults to 1.
+
+yDir:
+Firmware polarity multiplier for Y axis. Read from controllerState.config.y_dir. Defaults to 1.
+
+controllerState.config:
+Controller firmware config object loaded from the ESP32.
+
+controllerState.config.x_dir:
+Firmware X-axis polarity value.
+
+controllerState.config.y_dir:
+Firmware Y-axis polarity value.
+
+commands:
+Object that maps firmware HTTP commands to real physical directions after calibration and polarity are applied.
+
+commands.step_right:
+Real physical movement caused by the step_right endpoint.
+
+commands.step_left:
+Real physical movement caused by the step_left endpoint.
+
+commands.servo_up:
+Real physical movement caused by the servo_up endpoint.
+
+commands.servo_down:
+Real physical movement caused by the servo_down endpoint.
+
+step_right:
+Firmware command usually related to X movement.
+
+step_left:
+Firmware command usually related to opposite X movement.
+
+servo_up:
+Firmware command usually related to Y movement.
+
+servo_down:
+Firmware command usually related to opposite Y movement.
+
+panSummary:
+Readable summary of which axis acts as pan. Example: X (+ => LEFT).
+
+tiltSummary:
+Readable summary of which axis acts as tilt. Example: Y (+ => UP).
+
+buttonSummary:
+Readable summary explaining what each visible manual button really does after calibration.
+
+MANUAL_BUTTON_COMMANDS:
+Array that maps visible button names to firmware command names. deriveCalibration uses it to build the button summary and operator assist uses it to find matching buttons.
+
+map:
+Array method that transforms each item into a new value.
+
+join(' | '):
+Combines button summary parts into one readable string separated by vertical bars.
+
+findManualButtonForDirection:
+Finds which visible manual button should be pressed for a desired physical movement direction.
+
+direction in findManualButtonForDirection:
+The desired physical movement direction, like left, right, up, or down.
+
+derived:
+The object returned by deriveCalibration. It includes the real direction caused by each command.
+
+target:
+Cleaned requested direction.
+
+MANUAL_BUTTON_COMMANDS.find:
+Searches the manual button list and returns the first button whose command creates the desired physical direction.
+
+derived.commands[command]:
+The real physical direction produced by a firmware command.
+
+formatAxisAssist:
+Turns one parsed detector movement hint into operator-friendly text. It can return HOLD, a calibrated button instruction, or a warning to finish calibration.
+
+axisName:
+Readable axis name, usually Pan or Tilt.
+
+parsedLabel:
+Parsed detector sim label from parseSimLabel.
+
+button:
+Matching manual button returned by findManualButtonForDirection.
+
+moveText:
+Fallback text like LEFT_SMALL or UP_MED when calibration is incomplete.
+
+finish calibration:
+Message shown when the code cannot translate detector movement into a real button because calibration is incomplete.
+
+`${axisName}: ${button.button} x${parsedLabel.taps}`:
+Final calibrated button instruction. Example: Pan: Left x2.
+
+describeFramePosition:
+Creates a simple text description of where the target is in the frame, using normalized x/y offsets and deadZone.
+
+normX:
+Normalized horizontal target offset from -1 to 1.
+
+normY:
+Normalized vertical target offset from -1 to 1.
+
+deadZone:
+Center tolerance. If the offset is inside this area, the target is treated as centered on that axis.
+
+horizontal:
+Text result for x position: right, left, or empty.
+
+vertical:
+Text result for y position: above, below, or empty.
+
+Centered:
+Returned when both horizontal and vertical offsets are inside the dead zone.
+
+above-right of center:
+Example output when the target is above and right of the center.
+
+updateCalibrationReadouts:
+Updates the calibration status card in the UI. It shows controller config, pan axis summary, tilt axis summary, and button meaning summary.
+
+derived in updateCalibrationReadouts:
+Current calibration interpretation returned by deriveCalibration.
+
+controllerConfigVal:
+HUD field showing controller config values like x_dir and y_dir.
+
+calibrationPanVal:
+HUD field showing which axis acts as pan.
+
+calibrationTiltVal:
+HUD field showing which axis acts as tilt.
+
+calibrationButtonsVal:
+HUD field showing what each manual button physically does.
+
+setReadout:
+Helper that safely writes text into a UI element.
+
+n/a:
+Means not available, usually because controller config is missing.
+
+updateOperatorAssistReadout:
+Rebuilds the operator assist card from current calibration and current detection tracking state.
+
+trackingState:
+Shared detection state object. It tells whether a target exists and stores movement hints.
+
+trackingState.hasTarget:
+True when there is an active target.
+
+trackingState.simPanLabel:
+Horizontal detector movement hint, like HOLD, LEFT_SMALL, or RIGHT_MED.
+
+trackingState.simTiltLabel:
+Vertical detector movement hint, like HOLD, UP_SMALL, or DOWN_MED.
+
+trackingState.filteredNormX:
+Smoothed normalized horizontal target offset.
+
+trackingState.filteredNormY:
+Smoothed normalized vertical target offset.
+
+trackingState.isPossible:
+True when target is possible/weak rather than strong.
+
+settings:
+Current detector settings from getSettings.
+
+getSettings:
+Reads current detection settings, including deadZone.
+
+settings.deadZone:
+Center tolerance used by describeFramePosition.
+
+No target:
+Assist text shown when no active target exists.
+
+Run calibration:
+Assist button text shown when there is no target and calibration is incomplete.
+
+Wait for target:
+Assist button text shown when calibration is ready but no target exists.
+
+assistMoveVal:
+UI field showing detector-style movement, like PAN LEFT_SMALL / TILT UP_MED.
+
+assistFrameVal:
+UI field showing target position in frame, like above-right of center.
+
+assistButtonVal:
+UI field showing actual manual button hints, like Pan: Left x2.
+
+assistCenterVal:
+UI field showing whether the target is centered or off-center.
+
+panAssist:
+Parsed version of trackingState.simPanLabel.
+
+tiltAssist:
+Parsed version of trackingState.simTiltLabel.
+
+centered:
+True when both pan and tilt directions are hold.
+
+framePosition:
+Plain-language target location returned by describeFramePosition.
+
+Centered (possible):
+Assist text shown when a possible target is centered.
+
+Hold position:
+Button guidance shown when the target is already centered.
+
+moveParts:
+Array of detector-style movement instructions.
+
+PAN:
+Prefix used for horizontal movement guidance.
+
+TILT:
+Prefix used for vertical movement guidance.
+
+buttonParts:
+Array of concrete manual button instructions.
+
+formatAxisAssist('Pan', panAssist, derived):
+Converts pan guidance into a manual button instruction.
+
+formatAxisAssist('Tilt', tiltAssist, derived):
+Converts tilt guidance into a manual button instruction.
+
+Off-center:
+Means the target is outside the dead zone and needs movement guidance.
+
+Off-center (possible):
+Means a possible/weak target is outside the dead zone.
+
+exam summary:
+This file turns calibration observations into useful operator guidance. normalizeObservedDirection cleans direction input. getOppositeDirection and commandDirectionFromRawPositive handle polarity. axisRoleFromDirection decides pan vs tilt. parseSimLabel turns labels like LEFT_SMALL into direction/size/taps. loadCalibration, saveCalibration, and resetCalibration persist setup notes. deriveCalibration explains what each firmware command and manual button really does. updateCalibrationReadouts updates calibration UI. updateOperatorAssistReadout converts detector movement hints into readable frame position and manual button guidance.
+*/

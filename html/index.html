@@ -37,7 +37,7 @@ Key terms:
             <div class="page-copy">
               <div class="hero-kicker">Protected Access</div>
               <h1 class="display-6 fw-semibold text-hud mb-1">SkyShield Control</h1>
-              <p class="text-muted mb-0">Sign in to open the live dashboard.</p>
+              <p class="text-muted mb-0">Sign in to open the live dashboard. To receive a username and password, contact the system developer.</p>
             </div>
           </div>
           <div class="col-lg-5">
@@ -54,18 +54,22 @@ Key terms:
       <div class="card card-hud shadow-lg login-panel">
         <div class="card-body p-4">
           <div id="loginError" class="alert alert-danger d-none" role="alert"></div>
+          <div class="alert alert-info border-0 mb-4" role="note">
+            <div class="fw-semibold mb-1"><i class="bi bi-info-circle me-2"></i>Login Details</div>
+            <div class="small">This system is for authorized users only. To receive a username and password, contact the developer before signing in.</div>
+          </div>
           <form id="loginForm" action="#" method="post" autocomplete="off" novalidate>
             <div class="mb-3">
-              <label class="form-label" for="emailInput">Authorized Email</label>
+              <label class="form-label" for="emailInput">Username / Authorized Email</label>
               <input
                 id="emailInput"
                 type="email"
                 class="form-control form-control-hud"
-                placeholder="commander@skyshield.local"
+                placeholder="station01@skyshield.local"
                 name="email"
                 autocomplete="email"
                 required />
-              <div class="form-text text-muted">Use the briefing email assigned to your station.</div>
+              <div class="form-text text-muted">Use the username or authorized email that was provided to you by the developer.</div>
             </div>
             <div class="mb-4">
               <label class="form-label" for="passwordInput">Password</label>
@@ -73,18 +77,18 @@ Key terms:
                 id="passwordInput"
                 type="password"
                 class="form-control form-control-hud"
-                placeholder="Enter password"
+                placeholder="Enter the password provided by the developer"
                 name="password"
                 autocomplete="current-password"
                 required />
             </div>
             <button id="loginSubmitBtn" type="submit" class="btn btn-success w-100 hud-glow">
-              <i class="bi bi-shield-lock me-2"></i>Authenticate
+              <i class="bi bi-shield-lock me-2"></i>Sign In
             </button>
           </form>
         </div>
         <div class="card-footer small text-center text-muted">
-          Need help? Open the <a href="manual.html" class="link-hud">Operator Manual</a>.
+          Need credentials? Contact the system developer. Need help? Open the <a href="manual.html" class="link-hud">Operator Manual</a>.
         </div>
       </div>
     </div>

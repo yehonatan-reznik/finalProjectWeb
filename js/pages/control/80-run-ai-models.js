@@ -1,4 +1,4 @@
-// FILE ROLE: 80-detection-backends.js
+// FILE ROLE: 80-run-ai-models.js
 // What this file does:
 // - Prepares the camera frame for the active AI backend.
 // - Loads the COCO or AeroYOLO model/runtime when needed.
