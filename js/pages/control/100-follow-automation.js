@@ -9,10 +9,16 @@
 
 const FOLLOW_INTERVAL_MS = 180; // Follow cadence matched to the detector loop so commands do not pile up faster than target updates.
 const HOLD_TOLERANCE = 0.01; // Ignore tiny target drift that is already visually centered.
-const MAX_TAPS_PER_STEP = 3; // Cap repeated step commands so one frame cannot overdrive the rig.
+const MAX_FALLBACK_TAPS_PER_STEP = 1; // Legacy step-command fallback stays intentionally conservative to avoid large jumps.
+const FOLLOW_NUDGE_DEG_BY_SIZE = {
+  SMALL: 1,
+  MED: 2,
+  LARGE: 3,
+}; // Auto-follow uses smaller nudge increments than the legacy 5-degree step endpoints.
 
 let followEnabled = false; // True while auto-follow is armed.
 let followTimer = null; // Timer id for the next scheduled follow step.
+let followPrefersNudge = true; // Disabled only if the controller rejects the finer nudge endpoint.
 
 /**
  * @returns {boolean} True when the controller URL is available from local state or the current input.
@@ -70,7 +76,53 @@ function resolveDirectionCommand(direction, derived) {
 }
 
 /**
- * @returns {{command: string, taps: number}[]} Commands that should run for the current detector frame.
+ * @param {string} size - Simulated movement size such as SMALL, MED, or LARGE.
+ * @returns {number} Conservative nudge size in degrees for that follow step.
+ */
+function getFollowNudgeDegrees(size) {
+  return FOLLOW_NUDGE_DEG_BY_SIZE[String(size || 'SMALL').toUpperCase()] || FOLLOW_NUDGE_DEG_BY_SIZE.SMALL;
+}
+
+/**
+ * @param {{command: string, size: string}[]} moves - Commands derived from the current detector frame.
+ * @param {object|null} derived - Current calibration interpretation.
+ * @returns {string} Combined nudge command query, or an empty string when no nudge mapping is possible.
+ */
+function buildFollowNudgeCommand(moves, derived) {
+  if (!moves.length || !derived) return '';
+  const xDir = getControllerConfigNumber(derived.xDir, 1);
+  const yDir = getControllerConfigNumber(derived.yDir, 1);
+  let dx = 0;
+  let dy = 0;
+
+  for (const move of moves) {
+    const magnitude = getFollowNudgeDegrees(move.size);
+    switch (move.command) {
+      case 'step_right':
+        dx += magnitude * xDir;
+        break;
+      case 'step_left':
+        dx -= magnitude * xDir;
+        break;
+      case 'servo_up':
+        dy += magnitude * yDir;
+        break;
+      case 'servo_down':
+        dy -= magnitude * yDir;
+        break;
+      default:
+        return '';
+    }
+  }
+
+  const queryParts = [];
+  if (dx) queryParts.push(`dx=${dx}`);
+  if (dy) queryParts.push(`dy=${dy}`);
+  return queryParts.length ? `nudge?${queryParts.join('&')}` : '';
+}
+
+/**
+ * @returns {{derived: object|null, moves: {command: string, taps: number, size: string}[]}} Commands that should run for the current detector frame.
  */
 function resolveMovementCommands() {
   const derived = typeof deriveCalibration === 'function' ? deriveCalibration() : null;
@@ -82,7 +134,8 @@ function resolveMovementCommands() {
   if (panCommand) {
     moves.push({
       command: panCommand,
-      taps: Math.min(pan.taps, MAX_TAPS_PER_STEP),
+      taps: Math.min(pan.taps, MAX_FALLBACK_TAPS_PER_STEP),
+      size: pan.size,
     });
   }
 
@@ -90,11 +143,12 @@ function resolveMovementCommands() {
   if (tiltCommand) {
     moves.push({
       command: tiltCommand,
-      taps: Math.min(tilt.taps, MAX_TAPS_PER_STEP),
+      taps: Math.min(tilt.taps, MAX_FALLBACK_TAPS_PER_STEP),
+      size: tilt.size,
     });
   }
 
-  return moves;
+  return { derived, moves };
 }
 
 /**
@@ -109,8 +163,24 @@ async function performFollowStep() {
     return;
   }
 
-  const moves = resolveMovementCommands();
+  const { derived, moves } = resolveMovementCommands();
   if (!moves.length) return;
+
+  if (followPrefersNudge) {
+    const nudgeCommand = buildFollowNudgeCommand(moves, derived);
+    if (nudgeCommand) {
+      const response = await sendCmd(nudgeCommand);
+      if (response && response.ok) {
+        logConsole(`Auto-follow: ${nudgeCommand}`, 'text-info');
+        return;
+      }
+      if (response) {
+        followPrefersNudge = false;
+        logConsole('Auto-follow nudges unavailable; using legacy step commands.', 'text-warning');
+      }
+      if (!response) return;
+    }
+  }
 
   for (const { command, taps } of moves) {
     for (let i = 0; i < taps; i += 1) {
@@ -155,6 +225,7 @@ async function enableFollow() {
     return false;
   }
   followEnabled = true;
+  followPrefersNudge = true;
   syncFollowButtonState();
   logConsole('Auto-follow enabled.', 'text-info');
   scheduleNextFollow();
