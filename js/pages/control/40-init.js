@@ -159,12 +159,14 @@ function init() {
       isLaserOn = false;
     });
   }
-  if (stopBtn) {
-    stopBtn.addEventListener('click', async () => {
-      if (!(window.SkyShieldFollow && typeof window.SkyShieldFollow.toggle === 'function')) {
-        logConsole('Auto-follow module unavailable.', 'text-warning');
+  const operationBtn = document.getElementById('stopBtn');
+  if (operationBtn) {
+    operationBtn.addEventListener('click', async () => {
+      if (!window.SkyShieldFollow || typeof window.SkyShieldFollow.toggle !== 'function') {
+        logConsole('Auto-follow module not loaded.', 'text-warning');
         return;
       }
+
       await window.SkyShieldFollow.toggle();
     });
   }
