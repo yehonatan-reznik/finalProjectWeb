@@ -51,8 +51,8 @@ const $ = (id) => document.getElementById(id);
  *   syncStarted: boolean,
  *   unsubscribe: Function|null,
  *   rootRef: object|null,
- *   autoAppliedCamera: boolean,
- *   autoAppliedController: boolean,
+ *   autoAppliedCamera: string,
+ *   autoAppliedController: string,
  *   lastSnapshot: object|null
  * }} FirebaseState
  * Minimal Firebase listener state used to avoid duplicate subscriptions and repeated auto-apply behavior.
@@ -78,7 +78,7 @@ const btnStopCursor = $('btnStopCursor'); // Manual button that sends the generi
 const fireBtn = $('fireBtn'); // Manual button that attempts to enable the laser output.
 const stopLaserBtn = $('stopLaserBtn'); // Manual button that attempts to disable the laser output.
 const scanBtn = $('scanBtn'); // Placeholder scan button; current HTTP-only firmware does not support scan mode.
-const stopBtn = $('stopBtn'); // Stop button for halting automatic or continuous controller movement.
+const stopBtn = $('stopBtn'); // Auto-follow toggle button (historical id retained for compatibility).
 const logoutBtn = $('logoutBtn'); // Top-bar logout button.
 // Overlay and console block: the detector paints on the canvas while console logs keep operator feedback visible.
 const overlayCanvas = $('cameraOverlay'); // Transparent canvas drawn on top of the camera feed for boxes and reticles.
@@ -161,8 +161,8 @@ const firebaseState = {
   syncStarted: false, // Prevents starting multiple Firebase listeners for the same page.
   unsubscribe: null, // Reserved slot for future unsubscribe logic; current code uses rootRef directly.
   rootRef: null, // Firebase RTDB reference used for the root listener.
-  autoAppliedCamera: false, // Guards against repeatedly overwriting the camera URL with Firebase data.
-  autoAppliedController: false, // Guards against repeatedly overwriting the controller URL with Firebase data.
+  autoAppliedCamera: '', // Last Firebase camera URL auto-applied in this tab when no local override exists.
+  autoAppliedController: '', // Last Firebase controller URL auto-applied in this tab when no local override exists.
   lastSnapshot: null, // Last raw root snapshot data seen from Firebase.
 };
 

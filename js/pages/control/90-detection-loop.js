@@ -133,6 +133,9 @@ function stopDetectionLoop(reason) {
   if (detectTimer) clearTimeout(detectTimer);
   detectTimer = null;
   isDetecting = false;
+  if (window.SkyShieldFollow && typeof window.SkyShieldFollow.disable === 'function') {
+    window.SkyShieldFollow.disable({ silent: true, stopRig: true });
+  }
   clearOverlay();
   // Stopping the loop always clears stale visuals so the operator never sees an old box on a disconnected feed.
   if (overlayCanvas) overlayCanvas.classList.add('d-none');

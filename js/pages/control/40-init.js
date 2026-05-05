@@ -159,12 +159,23 @@ function init() {
       isLaserOn = false;
     });
   }
-  if (stopBtn) stopBtn.addEventListener('click', () => sendCmd('stop'));
+  if (stopBtn) {
+    stopBtn.addEventListener('click', async () => {
+      if (!(window.SkyShieldFollow && typeof window.SkyShieldFollow.toggle === 'function')) {
+        logConsole('Auto-follow module unavailable.', 'text-warning');
+        return;
+      }
+      await window.SkyShieldFollow.toggle();
+    });
+  }
   if (scanBtn) scanBtn.addEventListener('click', () => alert('Scan mode is not available on the HTTP-only firmware.'));
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       try {
+        if (window.SkyShieldFollow && typeof window.SkyShieldFollow.disable === 'function') {
+          await window.SkyShieldFollow.disable({ silent: true, stopRig: true });
+        }
         if (window.SkyShieldAuth && window.SkyShieldAuth.logout) await window.SkyShieldAuth.logout();
       } catch (err) {
         console.error('Logout failed', err);
@@ -205,6 +216,7 @@ function init() {
       setReadout(statusLabel, 'Stream error - check address / CORS / path');
       logConsole('Tip: if the stream opens in a tab but inference fails, confirm the camera still sends CORS headers.', 'text-warning');
       logConsole('Stream failed for all candidates.', 'text-danger');
+      if (!localStorage.getItem(STORAGE_KEY)) firebaseState.autoAppliedCamera = '';
       feedImg.classList.add('d-none');
       if (placeholder) placeholder.classList.remove('d-none');
     });

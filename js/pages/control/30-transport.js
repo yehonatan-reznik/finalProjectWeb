@@ -85,16 +85,18 @@ function configureFeedCorsMode() {
 // Stream setup only manages image source and detection loop lifecycle; the detector itself lives in control-detection.js.
 /**
  * @param {string} baseUrl - Camera base URL or stream URL.
+ * @param {{persist?: boolean}=} options - Whether this stream should become the local saved override.
  * @returns {string} Normalized base URL when successful, otherwise an empty string.
  */
 // EXAM: camera stream startup and retry state.
-function setStream(baseUrl) {
+function setStream(baseUrl, options) {
   // Function flow:
   // 1. Normalize the camera URL into one stable base form.
   // 2. If empty, tear everything down and return to idle.
   // 3. If valid, build a short list of fallback stream URLs.
   // 4. Point the shared <img> element at the first candidate.
   // 5. Update HUD state and save the normalized base URL.
+  const persist = !options || options.persist !== false; // Firebase auto-apply should not silently become a local override.
   // Normalize typed or Firebase-provided URLs into one consistent format.
   const normalized = normalizeBaseUrl(baseUrl); // Canonicalized camera URL used for stream setup and local persistence.
   if (!normalized) {
@@ -108,7 +110,7 @@ function setStream(baseUrl) {
     }
     if (placeholder) placeholder.classList.remove('d-none');
     setReadout(statusLabel, 'Stream idle');
-    localStorage.removeItem(STORAGE_KEY);
+    if (persist) localStorage.removeItem(STORAGE_KEY);
     stopDetectionLoop('idle');
     clearTargetTelemetry();
     setMode('Manual');
@@ -130,7 +132,7 @@ function setStream(baseUrl) {
   setMode('Observe');
   logConsole(`Attempting camera stream: ${first}`, 'text-muted');
   // Store the normalized base URL instead of the first candidate so future retries can be rebuilt consistently.
-  localStorage.setItem(STORAGE_KEY, normalized);
+  if (persist) localStorage.setItem(STORAGE_KEY, normalized);
   return normalized;
 }
 
@@ -148,7 +150,7 @@ function sendCmd(cmd) {
   // 4. If the network call itself failed, log a connection-level failure.
   // 5. Return the Response so callers can parse status/config bodies themselves.
   // Read the last saved controller base URL from localStorage.
-  const ip = localStorage.getItem(ESP32_STORAGE_KEY); // Saved ESP32 base URL used for direct HTTP commands.
+  const ip = localStorage.getItem(ESP32_STORAGE_KEY) || normalizeBaseUrl(esp32IpInput && esp32IpInput.value); // Saved or currently displayed ESP32 base URL used for direct HTTP commands.
   if (!ip) {
     alert('Set the ESP32 address first.');
     return Promise.resolve(null);

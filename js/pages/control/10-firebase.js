@@ -48,20 +48,21 @@ function applyFirebaseSnapshot(data) {
   }
 
   // Only auto-apply Firebase values when the operator has not already saved a local override in this browser.
-  if (!localStorage.getItem(STORAGE_KEY) && cameraUrl && !firebaseState.autoAppliedCamera) {
-    firebaseState.autoAppliedCamera = true;
+  if (!localStorage.getItem(STORAGE_KEY) && cameraUrl && firebaseState.autoAppliedCamera !== cameraUrl) {
+    firebaseState.autoAppliedCamera = cameraUrl;
     if (urlInput) urlInput.value = cameraUrl;
-    setStream(cameraUrl);
+    setStream(cameraUrl, { persist: false });
     logConsole(`Firebase camera URL loaded: ${cameraUrl}`, 'text-info');
   }
 
-  if (!localStorage.getItem(ESP32_STORAGE_KEY) && controllerUrl && !firebaseState.autoAppliedController) {
-    firebaseState.autoAppliedController = true;
+  if (!localStorage.getItem(ESP32_STORAGE_KEY) && controllerUrl && firebaseState.autoAppliedController !== controllerUrl) {
+    firebaseState.autoAppliedController = controllerUrl;
     if (esp32IpInput) esp32IpInput.value = controllerUrl;
-    localStorage.setItem(ESP32_STORAGE_KEY, controllerUrl);
     // Pull live status/config immediately after learning the controller URL from Firebase.
     syncLaserState();
-    syncControllerConfig(false);
+    syncControllerConfig(false).then((config) => {
+      if (!config && !localStorage.getItem(ESP32_STORAGE_KEY)) firebaseState.autoAppliedController = '';
+    });
     logConsole(`Firebase controller URL loaded: ${controllerUrl}`, 'text-info');
   }
 }
