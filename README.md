@@ -5,7 +5,7 @@ This repo contains the current browser-based ground control demo:
 - live ESP32-CAM streaming in the browser
 - local AeroYOLO ONNX detection on the operator PC
 - separate ESP32 controller firmware for servos and laser
-- bench-test assets, docs, and reference material
+- docs and firmware source for the current demo stack
 
 ## Current status
 
@@ -28,8 +28,22 @@ code/
   js/
     auth.js
     pages/
-      control.js
-      control-detection.js
+      control/
+        00-core.js
+        10-firebase.js
+        20-calibration-and-target-guide.js
+        30-transport.js
+        40-init.js
+        50-detection-state-settings.js
+        60-calculate-target-position.js
+        70-draw-target-overlay.js
+        80-run-ai-models.js
+        90-detection-loop.js
+        100-follow-automation.js
+      form.js
+      login.js
+      logs.js
+      manual.js
   models/
     aeroyolo.onnx
   firmware/
@@ -42,9 +56,6 @@ code/
       README.md
       skyshield_controller.ino
       secrets.example.h
-  test-assets/
-    README.md
-    images/
   docs/
     README.md
     source-material/
@@ -60,11 +71,10 @@ The current ESP32-CAM firmware already sends browser-friendly CORS headers, so t
 
 - `AeroYOLO` is the default browser detector for `aircraft`, `drone`, and `helicopter`.
 - `models/aeroyolo.onnx` is the actual binary model file used by the browser ONNX runtime. It is not text, so opening it in a text editor will look corrupted.
-- `js/pages/control.js` owns page wiring, Firebase sync, manual HTTP control, and calibration UX.
-- `js/pages/control-detection.js` owns model loading, target filtering, overlay drawing, and telemetry export.
+- `js/pages/control/` contains the split control-page runtime in dependency order.
 - `Operator Assist` turns the target offset into manual guidance such as `LEFT`, `RIGHT`, `UP`, or `DOWN`.
 - `Servo Calibration` lets you send small `X` and `Y` nudges, record what `X+` and `Y+` physically do, and derive which axis is pan vs tilt.
-- This remains manual-assist only. No automatic servo motion is generated from live detections.
+- `Auto-Follow` is optional and must be explicitly started from the control page.
 
 ## Firmware notes
 
@@ -85,8 +95,7 @@ The current ESP32-CAM firmware already sends browser-friendly CORS headers, so t
 - `/nudge?dx=5&dy=-5`
 - legacy manual control endpoints still work for the web UI
 
-## Validation assets
+## Validation references
 
-- `test-assets/images/` contains quick still-image checks for the browser detector.
 - `docs/source-material/` contains the local project documents moved out of the workspace root.
 - `docs/testing-checklist.md` captures the practical verification flow for detection and safe bench testing.

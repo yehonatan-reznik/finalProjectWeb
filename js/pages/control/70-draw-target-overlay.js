@@ -104,7 +104,7 @@ function updateSelectedTarget(selected, settings, loopMs) {
   setReadout(targetDeltaNormVal, formatNorm(filtered.normX, filtered.normY));
   setReadout(simCommandVal, `${sim.panLabel} (${sim.pan.toFixed(2)}) / ${sim.tiltLabel} (${sim.tilt.toFixed(2)})`);
   setReadout(loopTimeVal, loopMs.toFixed(1));
-  // control.js owns the assist card, but it rebuilds from this shared tracking state.
+  // The earlier control-page modules own the assist card, but it rebuilds from this shared tracking state.
   updateOperatorAssistReadout();
 }
 

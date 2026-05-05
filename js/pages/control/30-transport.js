@@ -82,7 +82,7 @@ function configureFeedCorsMode() {
   if (feedImg) feedImg.crossOrigin = 'anonymous';
 }
 
-// Stream setup only manages image source and detection loop lifecycle; the detector itself lives in control-detection.js.
+// Stream setup only manages image source and detection loop lifecycle; the detector itself lives in the later control-page modules.
 /**
  * @param {string} baseUrl - Camera base URL or stream URL.
  * @param {{persist?: boolean}=} options - Whether this stream should become the local saved override.

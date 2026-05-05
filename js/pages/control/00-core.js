@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 // 1. The top of the file grabs HTML elements and stores them in variables.
 // 2. The middle of the file contains helpers for Firebase, calibration, and controller commands.
 // 3. The bottom of the file connects buttons and inputs to those helpers.
-// 4. Detection math and model work live in control-detection.js, but this file still calls into that logic.
+// 4. Detection math and model work live in the later control-page modules, but this file still calls into that logic.
 // Architecture summary:
 // - This file is the page coordinator. It does not run detection itself.
 // - It owns operator-facing state such as stream URLs, controller config, Firebase sync, and calibration notes.
@@ -103,7 +103,7 @@ const firebaseCameraVal = $('firebaseCameraVal'); // Read-only card value showin
 const firebaseControllerVal = $('firebaseControllerVal'); // Read-only card value showing controller URL learned from Firebase.
 const firebaseLaserVal = $('firebaseLaserVal'); // Read-only card value showing laser state learned from Firebase.
 const firebaseHomeVal = $('firebaseHomeVal'); // Read-only card value showing saved home coordinates from Firebase.
-// Detection tuning controls: these feed directly into control-detection.js through shared helpers.
+// Detection tuning controls: these feed directly into the later control-page modules through shared helpers.
 const detectBackendSelect = $('detectBackendSelect'); // Dropdown choosing between COCO and AeroYOLO detection engines.
 const detectProfileSelect = $('detectProfileSelect'); // Dropdown choosing the label allow-list profile.
 const strongThresholdInput = $('strongThresholdInput'); // Numeric input for full target confidence threshold.
@@ -140,7 +140,7 @@ const MAX_LOG_ROWS = 250; // Hard cap on visible console rows so the page does n
 const CALIBRATION_PROBE_DELTA_DEG = 5; // Probe step size, in degrees, for calibration nudges.
 
 // Section: local runtime state.
-// This page keeps only stream/controller/Firebase state here; detection state lives in control-detection.js.
+// This page keeps only stream/controller/Firebase state here; detection state lives in the later control-page modules.
 let streamCandidates = []; // Ordered list of fallback camera URLs generated from one user-entered base URL.
 let streamCandidateIndex = 0; // Current position inside the retry candidate list.
 let isLaserOn = false; // Cached browser-side belief about whether the laser is currently enabled.

@@ -8,7 +8,7 @@
 // - The earlier files mostly define helpers and state.
 // - This file is the integration point that wires everything into actual page behavior.
 // Section: page bootstrap and event wiring.
-// init wires together the UI once both control.js and control-detection.js have loaded.
+// init wires together the UI once the split control-page modules have loaded.
 /**
  * Wires the control page UI, restores saved settings, and starts auth/Firebase flow.
  */
@@ -34,7 +34,7 @@ function init() {
     el.addEventListener('change', () => {
       saveSettings();
       clearTargetTelemetry();
-      // These globals live in control-detection.js and suppress stale state labels across backend/profile switches.
+      // These globals live in the later control-page modules and suppress stale state labels across backend/profile switches.
       lastDetectState = '';
       lastDetectLabel = '';
       const settings = getSettings(); // Fresh settings snapshot used only for the change log line.

@@ -189,5 +189,5 @@ function startDetectionLoop() {
   scheduleNextDetection(0);
 }
 
-// control.js defines init(), but we call it here so both halves of the control page are loaded first.
+// The earlier control-page modules define init(), but we call it here after the split control-page stack has loaded.
 init();

@@ -153,7 +153,7 @@
     requireAuth, // Guard used by protected pages like control.html.
     auth, // Raw Firebase Auth instance for advanced access if needed.
     app, // Raw initialized Firebase app instance.
-    database, // Raw RTDB instance used by control.js for sync.
+    database, // Raw RTDB instance used by the control-page Firebase module for sync.
     getDatabase: () => database // Small accessor that returns the same RTDB instance.
   };
 })(window);

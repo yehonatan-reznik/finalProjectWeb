@@ -6,20 +6,20 @@
 // Why this file exists:
 // - The detector needs one central place for configuration and shared runtime state.
 // - Other detection files read and update this state instead of duplicating it.
-// Detection-only storage keys, model paths, and timing constants live here so control.js can stay focused on page flow.
+// Detection-only storage keys, model paths, and timing constants live here so the earlier control-page modules can stay focused on page flow.
 // DRONE_MODEL_URL points at the real ONNX weight file used by the AeroYOLO path.
 // Reading guide:
 // 1. The top of this file defines detector settings and runtime state.
 // 2. The middle converts model output into one tracked target plus UI hints.
 // 3. The bottom loads models, runs inference, and schedules the repeating detection loop.
 // Pipeline summary:
-// - A camera frame is read from the shared <img> element created by control.js.
+// - A camera frame is read from the shared <img> element created by the earlier control-page modules.
 // - The selected backend turns that frame into raw predictions.
 // - Predictions are filtered by profile and confidence, then ranked down to one tracked target.
 // - The chosen target updates shared tracking state, on-screen overlay graphics, and exported telemetry.
 // - No automatic actuation happens here; outputs are guidance only.
 // Dependency summary:
-// - This file intentionally reuses globals from control.js such as feedImg, overlayCanvas, setReadout(), logConsole(), and clamp().
+// - This file intentionally reuses globals from the earlier control-page modules such as feedImg, overlayCanvas, setReadout(), logConsole(), and clamp().
 // Search guide:
 // - Ctrl+F `threshold` for confidence rules that decide ignored/possible/strong detections.
 // - Ctrl+F `track lock` for logic that tries to stay with the previous target across nearby frames.
@@ -178,7 +178,7 @@ let detectSourceCtx = null; // 2D context for that reusable off-screen canvas.
 const sessionTelemetry = []; // In-memory ring-like buffer of recent detection telemetry rows.
 
 // trackingState stores the current target lock, its filtered center, and the derived operator assist values.
-// control.js reads this object directly for status cards, simulated move hints, and telemetry download.
+// The earlier control-page modules read this object directly for status cards, simulated move hints, and telemetry download.
 /** @type {TrackingState} */
 const trackingState = {
   hasTarget: false, // True only when the pipeline currently considers one target locked.

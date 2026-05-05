@@ -11,7 +11,7 @@ Use this checklist to prove the demo is behaving as expected before any servo tr
 
 ## Detection
 
-- Test on known still images from `test-assets/images/`
+- Test on known still images or captured frames from your current camera setup
 - Test on recorded clips with a visible air target
 - Test small and distant targets
 - Test cluttered backgrounds such as trees, roofs, and clouds
