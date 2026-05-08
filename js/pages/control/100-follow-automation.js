@@ -6,6 +6,14 @@
 // Why this file exists:
 // - The detector already knows where the target is, but follow mode must remain optional.
 // - Keeping it isolated lets the rest of the control stack stay focused on detection and transport.
+// Reading guide:
+// 1. The top defines follow cadence and how coarse detector sizes map into controller movement.
+// 2. The middle translates detector pan/tilt hints into real controller commands.
+// 3. The bottom owns the follow timer lifecycle and exposes the public window.SkyShieldFollow API.
+// Separation-of-concerns notes:
+// - This file never runs model inference itself.
+// - It consumes shared trackingState values produced by the detector stack.
+// - It also avoids owning calibration logic by delegating physical-direction lookup to 20-calibration-and-target-guide.js.
 
 const FOLLOW_INTERVAL_MS = 180; // Follow cadence matched to the detector loop so commands do not pile up faster than target updates.
 const HOLD_TOLERANCE = 0.01; // Ignore tiny target drift that is already visually centered.
@@ -95,6 +103,7 @@ function buildFollowNudgeCommand(moves, derived) {
   let dx = 0;
   let dy = 0;
 
+  // Each move already encodes the real physical direction; this loop only converts that into signed nudge degrees.
   for (const move of moves) {
     const magnitude = getFollowNudgeDegrees(move.size);
     switch (move.command) {
@@ -129,6 +138,7 @@ function resolveMovementCommands() {
   const moves = [];
   const pan = parseSimLabel(trackingState.simPanLabel);
   const tilt = parseSimLabel(trackingState.simTiltLabel);
+  // Using the same parsed labels as the operator-assist panel keeps human guidance and automation aligned.
 
   const panCommand = resolveDirectionCommand(pan.direction, derived);
   if (panCommand) {
@@ -160,6 +170,7 @@ async function performFollowStep() {
     Math.abs(trackingState.filteredNormX) < HOLD_TOLERANCE &&
     Math.abs(trackingState.filteredNormY) < HOLD_TOLERANCE
   ) {
+    // Small residual offsets are ignored here so follow does not chatter when the target is already effectively centered.
     return;
   }
 
@@ -174,6 +185,7 @@ async function performFollowStep() {
         logConsole(`Auto-follow: ${nudgeCommand}`, 'text-info');
         return;
       }
+      // A real non-ok controller response disables the nudge path; pure network failures just abort this cycle.
       if (response) {
         followPrefersNudge = false;
         logConsole('Auto-follow nudges unavailable; using legacy step commands.', 'text-warning');
@@ -245,6 +257,7 @@ async function disableFollow(options) {
   if (followTimer) clearTimeout(followTimer);
   followTimer = null;
   syncFollowButtonState();
+  // Optional stopRig=false is used only by teardown paths that do not want one extra controller stop call.
   if (stopRig) await stopRigIfPossible();
   if (wasEnabled && !silent) logConsole('Auto-follow disabled.', 'text-muted');
   return wasEnabled;

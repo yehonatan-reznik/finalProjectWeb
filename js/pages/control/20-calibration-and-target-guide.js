@@ -7,6 +7,14 @@
 // - The rig's physical movement can differ from raw firmware command names.
 // - This file turns hardware behavior into understandable human guidance.
 // Section: calibration and operator assist.
+// Reading guide:
+// 1. The first helpers normalize direction words and decode detector labels like LEFT_SMALL.
+// 2. The middle stores/restores calibration notes and interprets controller polarity.
+// 3. The bottom builds operator-facing summaries and button guidance.
+// Convention notes:
+// - "Observed" means what the rig physically did during calibration.
+// - "Derived" means the interpretation after firmware polarity is applied.
+// - "Assist" means UI-only advice; this file itself does not move hardware.
 // Calibration helpers translate physical rig behavior into user-friendly manual hints.
 /**
  * @param {string} value - Direction text from saved state or a select box.
@@ -94,6 +102,7 @@ function parseSimLabel(label) {
   const direction = String(directionRaw || '').toLowerCase(); // Lowercased movement direction piece.
   const size = String(sizeRaw || 'SMALL').toUpperCase(); // Uppercased movement size piece.
   // Translate qualitative size into how many manual button taps the operator should make.
+  // This is operator guidance only; automation may choose a different physical movement granularity.
   const taps = size === 'LARGE' ? 3 : size === 'MED' ? 2 : 1; // Suggested button-tap count for the assist panel.
   return { label, direction, size, taps };
 }
@@ -216,6 +225,7 @@ function deriveCalibration() {
   const yDir = getControllerConfigNumber(controllerState.config && controllerState.config.y_dir, 1); // Firmware polarity multiplier for Y.
   // Convert raw axis direction plus firmware polarity into the practical movement caused by each HTTP command.
   // Example: if X positive physically moves LEFT, then a negative-X command should move RIGHT.
+  // This command map is the bridge from low-level firmware endpoint names to human "move left/right/up/down" language.
   const commands = { // Real movement direction caused by each firmware endpoint after calibration + polarity are applied.
     step_right: commandDirectionFromRawPositive(xObserved, xDir),
     step_left: commandDirectionFromRawPositive(xObserved, -xDir),
@@ -333,6 +343,7 @@ function updateOperatorAssistReadout() {
   const panAssist = parseSimLabel(trackingState.simPanLabel); // Parsed simulated pan movement from detector state.
   const tiltAssist = parseSimLabel(trackingState.simTiltLabel); // Parsed simulated tilt movement from detector state.
   // The target is considered centered only when both axes say HOLD.
+  // That keeps the assist card aligned with the same dead-zone logic used by the detector and follow modules.
   const centered = panAssist.direction === 'hold' && tiltAssist.direction === 'hold'; // True only when neither axis requires movement.
   // Build a plain-language description of where the target sits in the frame.
   const framePosition = describeFramePosition(trackingState.filteredNormX, trackingState.filteredNormY, settings.deadZone); // Plain-language frame-location summary.

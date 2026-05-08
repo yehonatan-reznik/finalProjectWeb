@@ -34,6 +34,14 @@ const $ = (id) => document.getElementById(id);
 // - home position: saved servo center angles that the controller can return to.
 // - telemetry: downloaded JSON history of detection passes and selected targets.
 // - manual mapping: the difference between visible button labels and raw firmware commands.
+// Load-order contract:
+// - This file loads before the other split control-page modules.
+// - Later files reuse these bindings directly instead of importing them.
+// - If an element id changes in control.html, the fix often starts here.
+// State-ownership summary:
+// - Browser-local persistence keys are defined here once.
+// - Runtime caches for stream, controller, and Firebase state also begin here.
+// - The detector stack reads these values but intentionally does not redefine them.
 
 /**
  * @typedef {{
@@ -141,6 +149,7 @@ const CALIBRATION_PROBE_DELTA_DEG = 5; // Probe step size, in degrees, for calib
 
 // Section: local runtime state.
 // This page keeps only stream/controller/Firebase state here; detection state lives in the later control-page modules.
+// Keeping these mutable values in one place lets the split files cooperate without passing large state objects around.
 let streamCandidates = []; // Ordered list of fallback camera URLs generated from one user-entered base URL.
 let streamCandidateIndex = 0; // Current position inside the retry candidate list.
 let isLaserOn = false; // Cached browser-side belief about whether the laser is currently enabled.
@@ -167,6 +176,7 @@ const firebaseState = {
 };
 
 // These are the operator-facing button labels that map to controller HTTP commands.
+// The labels describe what the rig should do on screen, not the literal firmware endpoint name.
 const MANUAL_BUTTON_COMMANDS = [
   { button: 'Left', command: 'step_right' }, // UI label Left intentionally sends the opposite firmware command so the rig moves left on screen.
   { button: 'Right', command: 'step_left' }, // UI label Right intentionally sends the opposite firmware command so the rig moves right on screen.
@@ -201,6 +211,7 @@ function logConsole(message, variant) {
   if (variant) row.className = variant;
   // Prefix every line with local time so exported screenshots still show the event order clearly.
   row.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  // The console is append-only during the session so operators can read event order directly.
   consolePanel.appendChild(row);
   while (consolePanel.children.length > MAX_LOG_ROWS) {
     consolePanel.removeChild(consolePanel.firstElementChild);
@@ -308,6 +319,7 @@ function getFirebaseSnapshotValue(data, path, fallback) {
   const parts = Array.isArray(path) ? path : String(path || '').split('.'); // Ordered path segments used for nested lookup.
   // Start at the root snapshot object.
   let current = data; // Cursor that walks down the nested snapshot object.
+  // Any missing branch short-circuits to the fallback instead of throwing on undefined access.
   // Walk through each segment of the path one by one.
   for (let i = 0; i < parts.length; i += 1) {
     const key = parts[i]; // Current property name being looked up.

@@ -6,6 +6,13 @@
 // Why this file exists:
 // - COCO and AeroYOLO use different runtimes and input/output shapes.
 // - This file hides those backend differences from the rest of the detector.
+// Reading guide:
+// 1. The top prepares camera pixels for whichever backend is active.
+// 2. The middle loads TensorFlow.js and ONNX Runtime lazily on first use.
+// 3. The bottom runs inference and normalizes both backends into one prediction shape.
+// Backend contract:
+// - Every exported detection eventually becomes an object with class, score, and [x, y, w, h] bbox.
+// - The rest of the detector does not need to care whether that came from TF.js or ONNX.
 /**
  * @returns {{source: HTMLImageElement|HTMLCanvasElement, scaleX: number, scaleY: number}|null} Inference source and scale info.
  */
@@ -92,6 +99,7 @@ function preprocessDroneDetectSource(modelWidth, modelHeight) {
   // Allocate [R-plane][G-plane][B-plane] because ONNX expects CHW layout, not RGBA pixels.
   const input = new Float32Array(channelSize * 3); // Final CHW float input buffer consumed by ONNX Runtime.
   // ONNX expects CHW float32 input in the 0..1 range.
+  // The alpha channel is ignored because the source image is fully opaque for detector purposes.
   for (let pixel = 0, i = 0; i < imageData.length; i += 4, pixel += 1) {
     input[pixel] = imageData[i] / 255;
     input[channelSize + pixel] = imageData[i + 1] / 255;
@@ -161,6 +169,7 @@ function normalizeDroneModelPrediction(data, offset, prepared) {
 // EXAM: initialize TensorFlow backend.
 async function ensureDetectBackend() {
   // Skip setup if it already happened or if TensorFlow is unavailable on this page.
+  // Backend selection is one-time work because repeatedly switching runtimes would just waste startup time.
   if (detectBackendReady || !window.tf) return;
   try {
     // Wait for TensorFlow.js runtime initialization to finish.
@@ -185,6 +194,7 @@ async function ensureDetectBackend() {
 // EXAM: load and cache COCO-SSD.
 async function ensureCocoDetectModel() {
   // Reuse the already-loaded model if it is present.
+  // Lazy loading keeps AeroYOLO-only sessions from paying COCO startup cost.
   if (detectModelReady && detectModel) return detectModel;
   if (!window.cocoSsd) {
     setDetectStatus('Detect: model missing', 'bg-danger');
@@ -218,6 +228,7 @@ async function ensureDroneDetectSession() {
   // - Fall back to WASM so the detector still runs on weaker or unsupported machines.
   // - Cache the session because creating it is expensive compared to a normal frame pass.
   // Reuse the already-created ONNX session if it is ready.
+  // This keeps the heaviest detector startup path out of the steady-state frame loop.
   if (droneDetectSessionReady && droneDetectSession) return droneDetectSession;
   if (!(window.ort && ort.InferenceSession && ort.Tensor)) {
     setDetectStatus('Detect: model missing', 'bg-danger');
@@ -281,6 +292,7 @@ async function detectWithAeroYolo() {
   // 3. Preprocess the current frame into an ONNX tensor.
   // 4. Run the model.
   // 5. Decode every output row into the shared { class, score, bbox } format.
+  // The returned objects intentionally match the COCO path so later selection/drawing code stays backend-agnostic.
   const session = await ensureDroneDetectSession(); // Cached or newly created ONNX inference session.
   if (!session) return [];
   // Resolve the model input/output names from session metadata when possible.

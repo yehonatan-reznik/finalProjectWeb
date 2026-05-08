@@ -6,6 +6,14 @@
 // Why this file exists:
 // - Firebase sync is separate from direct ESP32 commands.
 // - This file is only about shared cloud-side state and live updates, not manual control.
+// Reading guide:
+// 1. applyFirebaseSnapshot() turns one RTDB payload into visible dashboard values.
+// 2. startFirebaseSync() installs the single listener used by the whole control page.
+// 3. Local browser choices still win over Firebase auto-apply behavior.
+// Data-shape notes:
+// - Newer firmware writes nested camera/controller objects.
+// - Older firmware may still write flat keys like cameraIP and espIP.
+// - This file accepts both layouts so mixed deployments keep working.
 // Every Firebase snapshot can update the HUD and optionally auto-fill camera/controller URLs.
 /**
  * @param {object|null} data - Latest RTDB root snapshot data.
@@ -47,6 +55,9 @@ function applyFirebaseSnapshot(data) {
     isLaserOn = Number(laserValue) === 1;
   }
 
+  // Camera auto-apply is intentionally conservative:
+  // - Firebase may fill an empty page.
+  // - A locally saved URL still wins because it reflects an explicit operator choice.
   // Only auto-apply Firebase values when the operator has not already saved a local override in this browser.
   if (!localStorage.getItem(STORAGE_KEY) && cameraUrl && firebaseState.autoAppliedCamera !== cameraUrl) {
     firebaseState.autoAppliedCamera = cameraUrl;
@@ -55,6 +66,7 @@ function applyFirebaseSnapshot(data) {
     logConsole(`Firebase camera URL loaded: ${cameraUrl}`, 'text-info');
   }
 
+  // Controller auto-apply follows the same precedence rules, then refreshes live controller-derived state immediately.
   if (!localStorage.getItem(ESP32_STORAGE_KEY) && controllerUrl && firebaseState.autoAppliedController !== controllerUrl) {
     firebaseState.autoAppliedController = controllerUrl;
     if (esp32IpInput) esp32IpInput.value = controllerUrl;
@@ -93,6 +105,7 @@ function startFirebaseSync() {
     firebaseState.rootRef = db.ref('/');
     firebaseState.rootRef.on('value', (snapshot) => {
       // Convert the snapshot into plain data before handing it to the UI updater.
+      // The rest of the dashboard intentionally never sees raw Firebase snapshot objects.
       applyFirebaseSnapshot(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null);
     }, (error) => {
       console.error('Firebase RTDB listener failed.', error);

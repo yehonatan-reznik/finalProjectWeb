@@ -6,6 +6,13 @@
 // Why this file exists:
 // - Detection logic and drawing logic are kept separate.
 // - This file is the visual/output layer of the detector.
+// Reading guide:
+// 1. drawScene() paints the current frame using whatever the detector decided.
+// 2. updateSelectedTarget() is the shared handoff from "chosen detection" to persistent app state.
+// 3. Utility helpers at the bottom support telemetry buffering and reusable off-screen surfaces.
+// State-flow note:
+// - The detector loop calls updateSelectedTarget() before drawScene().
+// - That ordering means the overlay can always read the newest trackingState values while drawing.
 function drawScene(detections, selected) {
   // Drawing layers:
   // 1. Clear the canvas and redraw the center reticle.
@@ -72,10 +79,12 @@ function updateSelectedTarget(selected, settings, loopMs) {
   // - trackingState holds the official target
   // - HUD cards show its position/score
   // - operator assist can rebuild from trackingState alone
+  const wasCentered = trackingState.hasTarget && trackingState.simPanLabel === 'HOLD' && trackingState.simTiltLabel === 'HOLD'; // Previous frame's centered state used to avoid duplicate console lines.
   // Smooth the raw target center first so the UI is less jittery.
   const filtered = smoothMetrics(selected.metrics, settings); // Smoothed version of the selected target geometry.
   // Convert the filtered offset into manual movement hints.
   const sim = simCommand(filtered, settings); // Simulated pan/tilt guidance derived from the smoothed geometry.
+  const isCentered = sim.panLabel === 'HOLD' && sim.tiltLabel === 'HOLD'; // True only when the current target is inside the dead-zone on both axes.
   // Cache the chosen target and all derived values into shared runtime state.
   trackingState.hasTarget = true;
   trackingState.isPossible = !selected.isStrong;
@@ -104,6 +113,14 @@ function updateSelectedTarget(selected, settings, loopMs) {
   setReadout(targetDeltaNormVal, formatNorm(filtered.normX, filtered.normY));
   setReadout(simCommandVal, `${sim.panLabel} (${sim.pan.toFixed(2)}) / ${sim.tiltLabel} (${sim.tilt.toFixed(2)})`);
   setReadout(loopTimeVal, loopMs.toFixed(1));
+  // Transition-only logging keeps the event console readable while still surfacing center-entry and center-exit events.
+  if (isCentered && !wasCentered) {
+    sendCmd('laser_on')
+    logConsole(`Target centered on screen: ${selected.class} ${((selected.score || 0) * 100).toFixed(1)}%`, selected.isStrong ? 'text-info' : 'text-warning');
+  } else if (!isCentered && wasCentered) {
+    sendCmd('laser_off')
+    logConsole(`Target left center: ${selected.class} ${((selected.score || 0) * 100).toFixed(1)}% move=${sim.panLabel} / ${sim.tiltLabel}`, selected.isStrong ? 'text-info' : 'text-warning');
+  }
   // The earlier control-page modules own the assist card, but it rebuilds from this shared tracking state.
   updateOperatorAssistReadout();
 }
@@ -144,6 +161,7 @@ async function yieldToBrowser() {
 // EXAM: prepare reusable off-screen canvas.
 function ensureDetectSourceSurface() {
   // Lazily create one reusable off-screen canvas instead of allocating a new one every frame.
+  // Both the COCO and ONNX paths reuse this same surface to reduce per-frame garbage.
   if (!detectSourceCanvas) detectSourceCanvas = document.createElement('canvas');
   if (!detectSourceCtx && detectSourceCanvas) detectSourceCtx = detectSourceCanvas.getContext('2d', { alpha: false });
   return detectSourceCanvas && detectSourceCtx ? { canvas: detectSourceCanvas, ctx: detectSourceCtx } : null;

@@ -7,6 +7,14 @@
 // - This is the communication layer of the page.
 // - It is the file that actually talks to outside devices and stream endpoints.
 // Section: camera stream and controller transport.
+// Reading guide:
+// 1. The top contains lightweight formatting helpers shared by the HUD and overlay.
+// 2. The middle manages browser-side stream URL normalization, retries, and idle teardown.
+// 3. The lower half talks directly to the ESP32 controller and parses its responses.
+// Reliability notes:
+// - Camera URLs may come from typing or Firebase, so normalization happens here once.
+// - Controller helpers return the raw Response when possible so callers can still parse JSON/text.
+// - Failures are converted into short operator-facing log lines instead of raw fetch exceptions.
 // Lightweight formatting helpers are shared with the detection overlay script.
 /**
  * @param {HTMLElement|null} el - DOM node whose text should be replaced.
@@ -64,6 +72,7 @@ function buildStreamCandidates(normalized) {
     // Parse the URL once so we can inspect origin and path safely.
     const u = new URL(normalized); // Parsed URL object used to safely inspect origin and pathname.
     // Try the user-supplied path first, then common stream fallbacks.
+    // Set semantics remove duplicates automatically when the original URL already matches a fallback.
     if (u.pathname && u.pathname !== '/') return [...new Set([normalized, u.origin + '/stream', u.origin])];
     // If the user typed only the base host, try the standard /stream path first.
     return [normalized + '/stream', normalized];
@@ -130,6 +139,7 @@ function setStream(baseUrl, options) {
   setDetectStatus('Detect: waiting', 'bg-secondary');
   setSafetyState('warn', 'Scanning');
   setMode('Observe');
+  // Logging the first candidate helps distinguish "bad stream path" from later CORS/detection failures.
   logConsole(`Attempting camera stream: ${first}`, 'text-muted');
   // Store the normalized base URL instead of the first candidate so future retries can be rebuilt consistently.
   if (persist) localStorage.setItem(STORAGE_KEY, normalized);
@@ -160,6 +170,7 @@ function sendCmd(cmd) {
     .then(async (res) => {
       // Success responses are returned untouched; only the error path needs extra explanation/logging.
       // If the controller answered with an error code, try to extract a useful message.
+      // Returning the original Response object still lets the caller parse JSON or text afterward.
       if (!res.ok) {
         try {
           // Clone the response before reading its body so the original response can still be returned.
@@ -288,6 +299,7 @@ async function sendProbe(axis, sign) {
 function downloadTelemetry() {
   if (!sessionTelemetry.length) return logConsole('No telemetry to download yet.', 'text-warning');
   // Serialize the current session into nicely formatted JSON for later study.
+  // Plain JSON keeps the export simple to inspect, diff, and replay later.
   const blob = new Blob([JSON.stringify(sessionTelemetry, null, 2)], { type: 'application/json' }); // Generated JSON file content wrapped as a browser Blob.
   // Turn that blob into a temporary object URL that the browser can download.
   const url = URL.createObjectURL(blob); // Temporary browser URL pointing to the generated telemetry file.

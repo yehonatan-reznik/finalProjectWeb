@@ -8,6 +8,13 @@
 // - The earlier files mostly define helpers and state.
 // - This file is the integration point that wires everything into actual page behavior.
 // Section: page bootstrap and event wiring.
+// Reading guide:
+// 1. init() restores saved state first so the page does not flash stale defaults.
+// 2. It then attaches listeners in functional groups: detection, telemetry, calibration, transport, manual control, auth.
+// 3. Stream load/error handlers live near the bottom because they depend on earlier transport helpers.
+// Load-order note:
+// - The split control-page scripts all define globals first.
+// - init() is called only after the final detector orchestrator file finishes loading.
 // init wires together the UI once the split control-page modules have loaded.
 /**
  * Wires the control page UI, restores saved settings, and starts auth/Firebase flow.
@@ -48,6 +55,7 @@ function init() {
       saveSettings();
       const settings = getSettings(); // Fresh settings snapshot used only for the tuning-change log line.
       // These values directly affect confidence filtering and the simulated move hint.
+      // Logging them together makes it easier to correlate operator tuning changes with later detector behavior.
       logConsole(`Detection settings updated: ${settings.backend.label}, ${settings.profile.label}, strong=${settings.strongThreshold.toFixed(2)}, possible=${settings.possibleThreshold.toFixed(2)}, alpha=${settings.smoothingAlpha.toFixed(2)}, deadZone=${settings.deadZone.toFixed(2)}`, 'text-info');
     });
   });
@@ -162,6 +170,7 @@ function init() {
   const operationBtn = document.getElementById('stopBtn');
   if (operationBtn) {
     operationBtn.addEventListener('click', async () => {
+      // The follow module owns all follow state; init() only delegates the button click into it.
       if (!window.SkyShieldFollow || typeof window.SkyShieldFollow.toggle !== 'function') {
         logConsole('Auto-follow module not loaded.', 'text-warning');
         return;
@@ -233,6 +242,7 @@ function init() {
   if (savedEsp && esp32IpInput) {
     esp32IpInput.value = savedEsp;
     // Restore the last controller immediately so the page behaves like a persistent dashboard.
+    // This also repopulates calibration-dependent readouts before the operator presses anything.
     syncLaserState();
     syncControllerConfig(false);
   }
@@ -253,6 +263,7 @@ function init() {
     // - only authenticated users stay on the page
     // - once authenticated, Firebase RTDB sync begins
     // Auth is started last so all helpers are ready before Firebase callbacks begin updating the page.
+    // That ordering avoids Firebase listeners trying to touch UI state before the page wiring is finished.
     window.SkyShieldAuth.requireAuth({
       onAuthenticated: () => startFirebaseSync(),
     });

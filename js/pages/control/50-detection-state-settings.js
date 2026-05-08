@@ -39,6 +39,10 @@
 // - overlay space: the displayed camera space where boxes and reticles are drawn.
 // - smoothing: blending between old and new target centers to reduce jitter.
 // - CORS: browser security rule that can block pixel reads from the camera image.
+// Cross-file contract:
+// - Later detector files assume these constants and state objects already exist.
+// - This file owns shared detection memory; other files are helpers layered on top of it.
+// - clearTargetTelemetry() is the canonical reset path when any stage loses trust in the current target.
 
 /**
  * @typedef {{
@@ -162,6 +166,9 @@ const PROFILES = {
 // Section: runtime state and caches.
 // Detection runtime state is kept separate from controller/Firebase state so the page is easier to reason about.
 // The TF.js model and the ONNX session are cached separately because only one backend is active at a time.
+// Cache design notes:
+// - Model/session objects are expensive to recreate, so they live for the life of the page.
+// - Per-frame values such as the current target go into trackingState instead of separate globals.
 let detectTimer = null; // Timer id for the next scheduled detection pass.
 let detectLoopActive = false; // True while the repeating detector loop is supposed to keep running.
 let detectModel = null; // Cached COCO-SSD model instance after first successful load.
@@ -179,6 +186,7 @@ const sessionTelemetry = []; // In-memory ring-like buffer of recent detection t
 
 // trackingState stores the current target lock, its filtered center, and the derived operator assist values.
 // The earlier control-page modules read this object directly for status cards, simulated move hints, and telemetry download.
+// This object is intentionally mutated in place so every split file keeps a stable shared reference.
 /** @type {TrackingState} */
 const trackingState = {
   hasTarget: false, // True only when the pipeline currently considers one target locked.
@@ -252,6 +260,7 @@ function getSettings() {
   const possibleThreshold = clamp(possibleThresholdInput && possibleThresholdInput.value, 0.01, strongThreshold, 0.12); // Lower confidence needed for amber "possible target" state.
   const smoothingAlpha = clamp(smoothingInput && smoothingInput.value, 0.05, 1, 0.35); // Blend factor used by exponential smoothing of target movement.
   const deadZone = clamp(deadZoneInput && deadZoneInput.value, 0, 0.5, 0.08); // Center tolerance where simulated movement becomes HOLD.
+  // Returning one snapshot object avoids later code rereading controls mid-frame after the operator changes them.
   return { backend, profile, strongThreshold, possibleThreshold, smoothingAlpha, deadZone };
 }
 
@@ -337,6 +346,7 @@ function clearTargetTelemetry() {
   setReadout(simCommandVal, 'HOLD / HOLD');
   setReadout(loopTimeVal, 'n/a');
   // Also wipe the in-memory target state so later frames start from a clean slate.
+  // The reset intentionally preserves the same trackingState object identity for all later modules.
   Object.assign(trackingState, {
     hasTarget: false,
     isPossible: false,

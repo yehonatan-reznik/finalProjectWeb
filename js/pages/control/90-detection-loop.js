@@ -7,6 +7,13 @@
 // Why this file exists:
 // - The rest of the detector defines helpers, geometry, drawing, and backend logic.
 // - This file is the orchestrator that actually makes the detector run repeatedly on live frames.
+// Reading guide:
+// 1. runDetection() performs one full detector pass and updates UI state.
+// 2. stopDetectionLoop()/scheduleNextDetection()/startDetectionLoop() manage lifecycle and cadence.
+// 3. init() is called at the bottom only after every split module has been loaded.
+// Loop-behavior notes:
+// - This file tries to keep detector cadence stable without overlapping two inference passes.
+// - It also owns the authoritative clear/possible/target/error status transitions.
 //START DETECTING
 async function runDetection() {
   // Full frame pipeline:
@@ -35,6 +42,7 @@ async function runDetection() {
     const loopMs = performance.now() - startedAt; // Measured end-to-end detector runtime for this pass.
     if (!selected) {
       // Count consecutive misses so the tracker can survive a few short dropouts.
+      // Short-lived misses keep the previous lock alive; sustained misses fully reset tracking state.
       trackingState.missedFrames += 1;
       // We still draw all raw detections even when none qualified as a tracked air target.
       if (trackingState.missedFrames >= LOST_LIMIT) clearTargetTelemetry();
@@ -62,6 +70,7 @@ async function runDetection() {
       setDetectStatus('Detect: target', 'bg-danger');
       setSafetyState('danger', 'Air target detected');
       // Strong events are logged every time because they represent the primary operator-facing alarm state.
+      // The detector treats strong targets differently from "possible" warnings because operator response is different.
       logConsole(targetLogMessage, 'text-danger');
       lastDetectState = 'target';
     } else {
@@ -133,6 +142,7 @@ function stopDetectionLoop(reason) {
   if (detectTimer) clearTimeout(detectTimer);
   detectTimer = null;
   isDetecting = false;
+  // Auto-follow is shut down here too so stream teardown cannot leave movement automation running in the background.
   if (window.SkyShieldFollow && typeof window.SkyShieldFollow.disable === 'function') {
     window.SkyShieldFollow.disable({ silent: true, stopRig: true });
   }
@@ -162,6 +172,7 @@ function scheduleNextDetection(delay) {
   if (detectTimer) clearTimeout(detectTimer);
   detectTimer = setTimeout(async () => {
     // Measure one loop so the next timeout can compensate for inference time.
+    // This produces a steadier cadence than blindly waiting a fixed delay after every completed frame.
     const startedAt = performance.now(); // Timestamp used to compensate the next schedule against actual work time.
     await runDetection();
     // Keep a roughly fixed cadence: fast frames wait a little, slow frames continue almost immediately.

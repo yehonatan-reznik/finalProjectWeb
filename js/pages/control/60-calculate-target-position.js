@@ -6,6 +6,14 @@
 // Why this file exists:
 // - Model output by itself is just raw numbers.
 // - This file turns those numbers into geometry and decision data for tracking.
+// Reading guide:
+// 1. The first helpers map image pixels into overlay coordinates.
+// 2. The middle ranks detections and smooths one chosen target.
+// 3. The bottom turns geometry into operator-readable movement hints and overlay primitives.
+// Coordinate conventions:
+// - Positive X means the target is right of center.
+// - Positive Y means the target is above center.
+// - Normalized values compress those offsets into a roughly -1..1 range.
 // Overlay geometry converts detections from image space into the displayed canvas space.
 /**
  * Sizes the overlay canvas to match the displayed camera container.
@@ -55,6 +63,7 @@ function computeMetrics(det) {
   syncOverlaySize();
   const fit = getImageFit(); // Mapping data that converts raw image pixels into on-screen canvas coordinates.
   if (!fit) return null;
+  // This conversion is why later logic can ignore the raw image resolution and work in viewport-relative space.
   // Unpack the model bbox, which is stored as [x, y, width, height].
   const [rawX, rawY, rawW, rawH] = det.bbox; // Raw model bbox encoded as image-space x, y, width, height.
   // Convert raw image-space coordinates into displayed canvas-space coordinates.
@@ -139,6 +148,7 @@ function chooseCandidate(candidates) {
     // Start ranking mostly by confidence score.
     let detRank = det.score || 0; // Working rank for the challenger candidate.
     let bestRank = best.score || 0; // Working rank for the current best candidate.
+    // Rank adjustments are intentionally soft penalties, not hard rules, so a clearly better box can still replace the lock.
     // When a target is already locked, penalize far-away boxes so the tracker stays stable.
     if (trackingState.hasTarget && trackingState.missedFrames < LOST_LIMIT) {
       const diag = Math.max(1, Math.hypot(overlayCanvas.width, overlayCanvas.height)); // Used to normalize the distance penalty.
@@ -197,6 +207,7 @@ function simAxis(norm, deadZone, negLabel, posLabel) {
 // EXAM: convert target offset into simulated pan/tilt guidance.
 function simCommand(filtered, settings) {
   // Horizontal offset becomes a pan hint; vertical offset becomes a tilt hint.
+  // The follow module later consumes the same pan/tilt labels, so this is the shared translation layer.
   const pan = simAxis(filtered.normX, settings.deadZone, 'LEFT', 'RIGHT'); // Horizontal guidance derived from the filtered target offset.
   const tilt = simAxis(filtered.normY, settings.deadZone, 'DOWN', 'UP'); // Vertical guidance derived from the filtered target offset.
   return { pan: pan.value, tilt: tilt.value, panLabel: pan.label, tiltLabel: tilt.label };
