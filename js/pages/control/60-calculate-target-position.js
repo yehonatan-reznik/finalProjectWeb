@@ -77,7 +77,7 @@ function computeMetrics(det) {
   const screenCenterX = overlayCanvas.width / 2; // Horizontal center of the visible camera viewport.
   const screenCenterY = overlayCanvas.height / 2; // Vertical center of the visible camera viewport.
   const deltaX = centerX - screenCenterX; // Positive means target is to the right of center.
-  // Positive deltaY means the target sits above center, which matches the later UP/DOWN assist labels.
+  // Positive deltaY means the target sits above center; later guidance intentionally turns that into the opposite corrective move.
   const deltaY = screenCenterY - centerY;
   // Normalized deltas collapse every viewport into a -1..1 range for simpler assist logic.
   const normX = screenCenterX ? Math.max(-1, Math.min(1, deltaX / screenCenterX)) : 0; // Right/left offset scaled to a stable range.
@@ -206,10 +206,11 @@ function simAxis(norm, deadZone, negLabel, posLabel) {
  */
 // EXAM: convert target offset into simulated pan/tilt guidance.
 function simCommand(filtered, settings) {
-  // Horizontal offset becomes a pan hint; vertical offset becomes a tilt hint.
-  // The follow module later consumes the same pan/tilt labels, so this is the shared translation layer.
-  const pan = simAxis(filtered.normX, settings.deadZone, 'LEFT', 'RIGHT'); // Horizontal guidance derived from the filtered target offset.
-  const tilt = simAxis(filtered.normY, settings.deadZone, 'DOWN', 'UP'); // Vertical guidance derived from the filtered target offset.
+  // The target offset itself is not the correction.
+  // Example: a target right of center must move left on screen to re-center, so the guidance uses the negated offset.
+  // The follow module later consumes the same pan/tilt labels, so this is the shared translation layer for both UI and automation.
+  const pan = simAxis(-filtered.normX, settings.deadZone, 'LEFT', 'RIGHT'); // Corrective horizontal guidance derived from the filtered target offset.
+  const tilt = simAxis(-filtered.normY, settings.deadZone, 'DOWN', 'UP'); // Corrective vertical guidance derived from the filtered target offset.
   return { pan: pan.value, tilt: tilt.value, panLabel: pan.label, tiltLabel: tilt.label };
 }
 
