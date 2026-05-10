@@ -108,6 +108,7 @@
  *   simTilt: number,
  *   simPanLabel: string,
  *   simTiltLabel: string,
+ *   updateSeq: number,
  *   loopMs: number,
  *   missedFrames: number
  * }} TrackingState
@@ -205,6 +206,7 @@ const trackingState = {
   simTilt: 0, // Numeric tilt guidance derived from the normalized vertical offset.
   simPanLabel: 'HOLD', // Human-readable pan guidance like HOLD or LEFT_SMALL.
   simTiltLabel: 'HOLD', // Human-readable tilt guidance like HOLD or UP_MED.
+  updateSeq: 0, // Monotonic revision incremented whenever a fresh tracked target update is committed.
   loopMs: 0, // Measured duration of the last full detection pass.
   missedFrames: 0, // Consecutive frames in which no valid target was selected.
 };

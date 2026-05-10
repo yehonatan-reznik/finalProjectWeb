@@ -15,7 +15,7 @@
 // - It consumes shared trackingState values produced by the detector stack.
 // - It also avoids owning calibration logic by delegating physical-direction lookup to 20-calibration-and-target-guide.js.
 
-const FOLLOW_INTERVAL_MS = 180; // Follow cadence matched to the detector loop so commands do not pile up faster than target updates.
+const FOLLOW_INTERVAL_MS = 80; // Follow polls quickly, but each target update is consumed only once so stale frames cannot cause repeated overshoot.
 const HOLD_TOLERANCE = 0.01; // Ignore tiny target drift that is already visually centered.
 const MAX_FALLBACK_TAPS_PER_STEP = 1; // Legacy step-command fallback stays intentionally conservative to avoid large jumps.
 const FOLLOW_NUDGE_DEG_BY_SIZE = {
@@ -27,6 +27,13 @@ const FOLLOW_NUDGE_DEG_BY_SIZE = {
 let followEnabled = false; // True while auto-follow is armed.
 let followTimer = null; // Timer id for the next scheduled follow step.
 let followPrefersNudge = true; // Disabled only if the controller rejects the finer nudge endpoint.
+let lastFollowTrackingSeq = 0; // Last trackingState.updateSeq already consumed by follow so stale detector frames are never replayed.
+const DEFAULT_FOLLOW_DIRECTION_COMMANDS = {
+  left: 'step_left',
+  right: 'step_right',
+  up: 'servo_up',
+  down: 'servo_down',
+}; // Auto-follow fallback must not depend on the UI button labels, which are presentation-level aliases.
 
 /**
  * @returns {boolean} True when the controller URL is available from local state or the current input.
@@ -39,9 +46,7 @@ function hasControllerAddress() {
  * @returns {string|null} Default controller command for a plain physical direction.
  */
 function getDefaultCommandForDirection(direction) {
-  const target = String(direction || '').toLowerCase();
-  const button = MANUAL_BUTTON_COMMANDS.find(({ button: label }) => label.toLowerCase() === target);
-  return button ? button.command : null;
+  return DEFAULT_FOLLOW_DIRECTION_COMMANDS[String(direction || '').toLowerCase()] || null;
 }
 
 /**
@@ -92,6 +97,26 @@ function getFollowNudgeDegrees(size) {
 }
 
 /**
+ * @param {Response|null} response - Controller response from a nudge attempt.
+ * @returns {boolean} True only when the firmware likely does not support the nudge endpoint.
+ */
+function isNudgeUnsupportedResponse(response) {
+  return !!(response && [404, 405, 501].includes(response.status));
+}
+
+/**
+ * @returns {boolean} True when both calibration directions have been recorded.
+ */
+function hasCompleteCalibration() {
+  return !!(
+    controllerState &&
+    controllerState.calibration &&
+    controllerState.calibration.xPositiveObserved !== 'unknown' &&
+    controllerState.calibration.yPositiveObserved !== 'unknown'
+  );
+}
+
+/**
  * @param {{command: string, size: string}[]} moves - Commands derived from the current detector frame.
  * @param {object|null} derived - Current calibration interpretation.
  * @returns {string} Combined nudge command query, or an empty string when no nudge mapping is possible.
@@ -131,7 +156,7 @@ function buildFollowNudgeCommand(moves, derived) {
 }
 
 /**
- * @returns {{derived: object|null, moves: {command: string, taps: number, size: string}[]}} Commands that should run for the current detector frame.
+ * @returns {{derived: object|null, moves: {axis: string, command: string, taps: number, size: string, strength: number}[]}} Commands that should run for the current detector frame.
  */
 function resolveMovementCommands() {
   const derived = typeof deriveCalibration === 'function' ? deriveCalibration() : null;
@@ -143,18 +168,22 @@ function resolveMovementCommands() {
   const panCommand = resolveDirectionCommand(pan.direction, derived);
   if (panCommand) {
     moves.push({
+      axis: 'pan',
       command: panCommand,
       taps: Math.min(pan.taps, MAX_FALLBACK_TAPS_PER_STEP),
       size: pan.size,
+      strength: Math.abs(trackingState.filteredNormX),
     });
   }
 
   const tiltCommand = resolveDirectionCommand(tilt.direction, derived);
   if (tiltCommand) {
     moves.push({
+      axis: 'tilt',
       command: tiltCommand,
       taps: Math.min(tilt.taps, MAX_FALLBACK_TAPS_PER_STEP),
       size: tilt.size,
+      strength: Math.abs(trackingState.filteredNormY),
     });
   }
 
@@ -162,10 +191,30 @@ function resolveMovementCommands() {
 }
 
 /**
+ * @param {{axis: string, command: string, taps: number, size: string, strength: number}[]} moves - Candidate fallback moves for the current detector frame.
+ * @returns {{axis: string, command: string, taps: number, size: string, strength: number}[]} Single best fallback move.
+ */
+function pickFallbackMoves(moves) {
+  if (moves.length <= 1) return moves;
+  const ranked = [...moves].sort((a, b) => {
+    const degreeDelta = getFollowNudgeDegrees(b.size) - getFollowNudgeDegrees(a.size);
+    if (degreeDelta) return degreeDelta;
+    const strengthDelta = b.strength - a.strength;
+    if (strengthDelta) return strengthDelta;
+    if (a.axis === b.axis) return 0;
+    return a.axis === 'pan' ? -1 : 1;
+  });
+  return [ranked[0]];
+}
+
+/**
  * Runs one auto-follow pass using the latest shared tracking state.
  */
 async function performFollowStep() {
   if (!followEnabled || !trackingState.hasTarget) return;
+  const currentTrackingSeq = trackingState.updateSeq || 0;
+  if (currentTrackingSeq === lastFollowTrackingSeq) return;
+  lastFollowTrackingSeq = currentTrackingSeq;
   if (
     Math.abs(trackingState.filteredNormX) < HOLD_TOLERANCE &&
     Math.abs(trackingState.filteredNormY) < HOLD_TOLERANCE
@@ -185,23 +234,24 @@ async function performFollowStep() {
         logConsole(`Auto-follow: ${nudgeCommand}`, 'text-info');
         return;
       }
-      // A real non-ok controller response disables the nudge path; pure network failures just abort this cycle.
-      if (response) {
+      // Only a real "endpoint unsupported" style response disables the nudge path; temporary cooldowns must not force a permanent downgrade.
+      if (isNudgeUnsupportedResponse(response)) {
         followPrefersNudge = false;
         logConsole('Auto-follow nudges unavailable; using legacy step commands.', 'text-warning');
       }
-      if (!response) return;
+      return;
     }
   }
 
-  for (const { command, taps } of moves) {
+  const fallbackMoves = pickFallbackMoves(moves);
+  for (const { command, taps } of fallbackMoves) {
     for (let i = 0; i < taps; i += 1) {
       const response = await sendCmd(command);
       if (!response || !response.ok) return;
     }
   }
 
-  logConsole(`Auto-follow: ${moves.map((move) => `${move.command} x${move.taps}`).join(', ')}`, 'text-info');
+  logConsole(`Auto-follow: ${fallbackMoves.map((move) => `${move.command} x${move.taps}`).join(', ')}`, 'text-info');
 }
 
 /**
@@ -236,9 +286,21 @@ async function enableFollow() {
     syncFollowButtonState();
     return false;
   }
+  if (!controllerState.config && typeof syncControllerConfig === 'function') {
+    await syncControllerConfig(false);
+  }
+  if (!controllerState.config) {
+    logConsole('Auto-follow needs controller config first. Reconnect the ESP32 controller and try again.', 'text-warning');
+    syncFollowButtonState();
+    return false;
+  }
   followEnabled = true;
   followPrefersNudge = true;
+  lastFollowTrackingSeq = 0;
   syncFollowButtonState();
+  if (!hasCompleteCalibration()) {
+    logConsole('Auto-follow is using the default direction map. Run calibration if movement still looks reversed.', 'text-warning');
+  }
   logConsole('Auto-follow enabled.', 'text-info');
   scheduleNextFollow();
   return true;
@@ -256,6 +318,7 @@ async function disableFollow(options) {
   followEnabled = false;
   if (followTimer) clearTimeout(followTimer);
   followTimer = null;
+  lastFollowTrackingSeq = 0;
   syncFollowButtonState();
   // Optional stopRig=false is used only by teardown paths that do not want one extra controller stop call.
   if (stopRig) await stopRigIfPossible();

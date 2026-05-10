@@ -102,6 +102,7 @@ function updateSelectedTarget(selected, settings, loopMs) {
   trackingState.simTilt = sim.tilt;
   trackingState.simPanLabel = sim.panLabel;
   trackingState.simTiltLabel = sim.tiltLabel;
+  trackingState.updateSeq += 1;
   trackingState.loopMs = loopMs;
   trackingState.missedFrames = 0;
   // Mirror that cached state into the visible readout cards.
