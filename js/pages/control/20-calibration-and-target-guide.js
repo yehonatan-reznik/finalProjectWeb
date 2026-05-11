@@ -150,6 +150,7 @@ function loadCalibration() {
   writeCalibrationControls();
 }
 
+// Current control.html does not render the calibration panel, so this save helper is retained for future UI restoration but is not reachable from the shipped page.
 /**
  * @param {boolean} logChange - Whether to write a confirmation line to the event console.
  */
@@ -165,6 +166,7 @@ function saveCalibration(logChange) {
   }
 }
 
+// Current control.html does not render the calibration panel, so this reset helper is retained for future UI restoration but is not reachable from the shipped page.
 /**
  * Clears saved calibration notes and resets the dropdowns to unknown.
  */

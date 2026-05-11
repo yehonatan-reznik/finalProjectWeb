@@ -419,6 +419,7 @@ void handleIndex() {
 }
 
 void handleServoUp() {
+  // "servo_up" is the raw positive-Y command; the final visible movement still depends on Y_DIR and physical mounting.
   moveToAngles(xAngle, yAngle + (SERVO_STEP_DEG * Y_DIR), "servo_up");
 }
 

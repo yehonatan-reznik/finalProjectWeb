@@ -276,6 +276,7 @@ async function syncLaserState() {
   if (typeof status.laser === 'number') isLaserOn = status.laser === 1;
 }
 
+// Current control.html does not render the calibration probe controls, so this helper is retained for future UI restoration but is not reachable from the shipped page.
 /**
  * @param {'x'|'y'} axis - Axis to nudge during calibration.
  * @param {number} sign - Positive or negative direction for the nudge.
@@ -292,6 +293,7 @@ async function sendProbe(axis, sign) {
 }
 
 // Telemetry is recorded by the detection loop and downloaded here as a JSON file for later review.
+// Current control.html does not render the telemetry export controls, so this helper is retained for future UI restoration but is not reachable from the shipped page.
 /**
  * Downloads the in-memory telemetry array as a JSON file.
  */
