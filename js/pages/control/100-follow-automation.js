@@ -36,6 +36,7 @@ const DEFAULT_FOLLOW_DIRECTION_COMMANDS = {
 }; // Auto-follow fallback must not depend on the UI button labels, which are presentation-level aliases.
 
 /**
+ * Checks whether the page currently knows where to send controller commands.
  * @returns {boolean} True when the controller URL is available from local state or the current input.
  */
 function hasControllerAddress() {
@@ -43,6 +44,7 @@ function hasControllerAddress() {
 }
 
 /**
+ * Maps a plain physical direction word to the default legacy controller command.
  * @returns {string|null} Default controller command for a plain physical direction.
  */
 function getDefaultCommandForDirection(direction) {
@@ -50,6 +52,7 @@ function getDefaultCommandForDirection(direction) {
 }
 
 /**
+ * Refreshes the Start/Stop Auto-Follow button so its text and styling match follow state.
  * Updates the visible follow button so its label always matches the current state.
  */
 function syncFollowButtonState() {
@@ -61,6 +64,7 @@ function syncFollowButtonState() {
 }
 
 /**
+ * Verifies that auto-follow has the minimum controller and stream prerequisites before starting.
  * @returns {boolean} True when follow mode has the minimum prerequisites to start safely.
  */
 function canEnableFollow() {
@@ -76,6 +80,7 @@ function canEnableFollow() {
 }
 
 /**
+ * Translates a desired real-world movement into the exact controller command to send.
  * @param {string} direction - Desired physical movement direction.
  * @param {object|null} derived - Current calibration interpretation.
  * @returns {string|null} Matching controller command.
@@ -89,6 +94,7 @@ function resolveDirectionCommand(direction, derived) {
 }
 
 /**
+ * Converts the detector's SMALL/MED/LARGE follow hint into a conservative nudge size in degrees.
  * @param {string} size - Simulated movement size such as SMALL, MED, or LARGE.
  * @returns {number} Conservative nudge size in degrees for that follow step.
  */
@@ -97,6 +103,7 @@ function getFollowNudgeDegrees(size) {
 }
 
 /**
+ * Detects whether a failed nudge request means the firmware lacks nudge support entirely.
  * @param {Response|null} response - Controller response from a nudge attempt.
  * @returns {boolean} True only when the firmware likely does not support the nudge endpoint.
  */
@@ -105,6 +112,7 @@ function isNudgeUnsupportedResponse(response) {
 }
 
 /**
+ * Checks whether both calibration directions have been captured well enough to trust derived mappings.
  * @returns {boolean} True when both calibration directions have been recorded.
  */
 function hasCompleteCalibration() {
@@ -117,6 +125,7 @@ function hasCompleteCalibration() {
 }
 
 /**
+ * Combines the chosen follow moves into one signed `/nudge?dx=...&dy=...` query when possible.
  * @param {{command: string, size: string}[]} moves - Commands derived from the current detector frame.
  * @param {object|null} derived - Current calibration interpretation.
  * @returns {string} Combined nudge command query, or an empty string when no nudge mapping is possible.
@@ -156,6 +165,7 @@ function buildFollowNudgeCommand(moves, derived) {
 }
 
 /**
+ * Reads the current detector labels and converts them into calibrated movement commands for this frame.
  * @returns {{derived: object|null, moves: {axis: string, command: string, taps: number, size: string, strength: number}[]}} Commands that should run for the current detector frame.
  */
 function resolveMovementCommands() {
@@ -191,11 +201,15 @@ function resolveMovementCommands() {
 }
 
 /**
+ * Chooses the single safest legacy fallback move when a combined nudge cannot be used.
  * @param {{axis: string, command: string, taps: number, size: string, strength: number}[]} moves - Candidate fallback moves for the current detector frame.
  * @returns {{axis: string, command: string, taps: number, size: string, strength: number}[]} Single best fallback move.
  */
 function pickFallbackMoves(moves) {
   if (moves.length <= 1) return moves;
+  // The legacy single-axis step fallback cannot safely send pan + tilt back-to-back on every frame,
+  // because the controller rate-limits rapid servo updates. Pick the strongest axis and let the next
+  // fresh detector frame decide whether the other axis still needs correction.
   const ranked = [...moves].sort((a, b) => {
     const degreeDelta = getFollowNudgeDegrees(b.size) - getFollowNudgeDegrees(a.size);
     if (degreeDelta) return degreeDelta;
@@ -208,11 +222,14 @@ function pickFallbackMoves(moves) {
 }
 
 /**
+ * Executes one auto-follow cycle from the newest available tracking update.
  * Runs one auto-follow pass using the latest shared tracking state.
  */
 async function performFollowStep() {
   if (!followEnabled || !trackingState.hasTarget) return;
   const currentTrackingSeq = trackingState.updateSeq || 0;
+  // Follow consumes each detector update once. Without this guard, a slow-moving or frozen target can
+  // trigger repeated nudges from stale tracking data and drive the rig too far in one direction.
   if (currentTrackingSeq === lastFollowTrackingSeq) return;
   lastFollowTrackingSeq = currentTrackingSeq;
   if (
@@ -239,6 +256,8 @@ async function performFollowStep() {
         followPrefersNudge = false;
         logConsole('Auto-follow nudges unavailable; using legacy step commands.', 'text-warning');
       }
+      // Whether the failure was network-related, rate-limited, or unsupported, stop this cycle here and
+      // wait for the next detector update instead of stacking extra fallback moves onto stale guidance.
       return;
     }
   }
@@ -255,6 +274,7 @@ async function performFollowStep() {
 }
 
 /**
+ * Arms the timer that triggers the next auto-follow cycle.
  * Schedules the next follow pass.
  */
 function scheduleNextFollow() {
@@ -266,6 +286,7 @@ function scheduleNextFollow() {
 }
 
 /**
+ * Sends a last stop command so the rig does not keep moving after auto-follow shuts down.
  * Sends a final stop command to the controller when follow mode is turned off.
  */
 async function stopRigIfPossible() {
@@ -277,6 +298,7 @@ async function stopRigIfPossible() {
 }
 
 /**
+ * Enables auto-follow after validating prerequisites and refreshing controller config if needed.
  * Turns auto-follow on.
  * @returns {Promise<boolean>} True when the mode becomes enabled.
  */
@@ -286,6 +308,8 @@ async function enableFollow() {
     syncFollowButtonState();
     return false;
   }
+  // Follow should start only after the latest controller polarity/config has been fetched. Otherwise the
+  // fallback path may guess directions from defaults that do not match the current rig wiring.
   if (!controllerState.config && typeof syncControllerConfig === 'function') {
     await syncControllerConfig(false);
   }
@@ -307,6 +331,7 @@ async function enableFollow() {
 }
 
 /**
+ * Disables auto-follow, clears its timer, and optionally sends a final stop command to the rig.
  * Turns auto-follow off.
  * @param {{silent?: boolean, stopRig?: boolean}=} options - Optional shutdown controls for teardown paths.
  * @returns {Promise<boolean>} True when the mode was disabled from an enabled state.
@@ -327,6 +352,7 @@ async function disableFollow(options) {
 }
 
 /**
+ * Switches the main Auto-Follow button between enable and disable behavior.
  * Toggles auto-follow from the main control button.
  * @returns {Promise<boolean>} True when follow ends up enabled.
  */
