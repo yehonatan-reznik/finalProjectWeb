@@ -373,3 +373,11 @@ window.SkyShieldFollow = {
 };
 
 syncFollowButtonState();
+
+/*
+WHO-CALLS:
+- html/control.html loads this file after the detection loop file.
+- 40-init.js calls window.SkyShieldFollow.toggle() and disable().
+- 90-detection-loop.js calls window.SkyShieldFollow.disable().
+- while running, this file reads trackingState from 50-detection-state-settings.js, uses calibration helpers from 20-calibration-and-target-guide.js, and sends movement commands through 30-transport.js.
+*/

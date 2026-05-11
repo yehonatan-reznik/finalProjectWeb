@@ -1,7 +1,7 @@
 ﻿<!doctype html>
 <!-- Purpose: primary operations page for live camera viewing, detection, manual controller input, and Firebase-assisted device discovery. -->
 <!-- EXAM: main operator dashboard structure and key element ids. -->
-<!-- Reading guide:
+<!-- Reading guide FOR CONTROL.HTML:
 1. The hero and top cards explain the live workspace.
 2. The main body contains the camera viewport, status cards, manual controls, and detector tuning.
 3. Scripts at the bottom load Bootstrap, ML runtimes, Firebase, and the two control-page JS files.
@@ -218,26 +218,63 @@ Key terms:
     <a class="link-hud" href="manual.html"><i class="bi bi-book me-1"></i>Operator Manual</a>
   </footer>
 
-  <!-- Bootstrap 5 JS Bundle -->
+  <!-- Bootstrap UI behavior: navbar collapse, buttons, and other interactive components. -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- ONNX Runtime Web: runs the AeroYOLO ONNX model directly in the browser. -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.webgpu.min.js"></script>
+
+  <!-- TensorFlow.js core runtime used by the alternate COCO-SSD detection backend. -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+
+  <!-- COCO-SSD browser model used as the generic fallback detector. -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+
+  <!-- Firebase App: shared base SDK required before auth/database modules can attach. -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+
+  <!-- Firebase Auth: protects the dashboard and handles login/logout session state. -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+
+  <!-- Firebase Realtime Database: listens for shared camera/controller values. -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+
+  <!-- Page auth guard: blocks unauthenticated access and exposes logout helpers. -->
   <script src="../js/auth.js"></script>
-  <!-- Split control-page runtime: smaller files loaded in dependency order. -->
+
+  <!-- Split control-page runtime. These files are loaded in dependency order from shared state first to follow automation last. -->
+
+  <!-- 00-core.js: caches DOM elements, shared constants, and top-level runtime state used by the whole dashboard. -->
   <script src="../js/pages/control/00-core.js"></script>
+
+  <!-- 10-firebase.js: syncs Firebase camera/controller values into the local dashboard when no local override exists. -->
   <script src="../js/pages/control/10-firebase.js"></script>
+
+  <!-- 20-calibration-and-target-guide.js: interprets controller calibration and turns detector hints into real movement directions. -->
   <script src="../js/pages/control/20-calibration-and-target-guide.js"></script>
+
+  <!-- 30-transport.js: manages the camera stream URL and sends HTTP commands to the ESP32 controller. -->
   <script src="../js/pages/control/30-transport.js"></script>
+
+  <!-- 40-init.js: wires buttons, inputs, load/error handlers, saved state restore, and page startup flow. -->
   <script src="../js/pages/control/40-init.js"></script>
+
+  <!-- 50-detection-state-settings.js: owns detector settings, backend/profile constants, and the shared trackingState object. -->
   <script src="../js/pages/control/50-detection-state-settings.js"></script>
+
+  <!-- 60-calculate-target-position.js: converts raw detections into screen coordinates, smoothed offsets, and movement hints. -->
   <script src="../js/pages/control/60-calculate-target-position.js"></script>
+
+  <!-- 70-draw-target-overlay.js: draws boxes, reticles, lines, labels, and commits the selected target into shared UI state. -->
   <script src="../js/pages/control/70-draw-target-overlay.js"></script>
+
+  <!-- 80-run-ai-models.js: loads the AI backends and runs browser-side inference for AeroYOLO or COCO-SSD. -->
   <script src="../js/pages/control/80-run-ai-models.js"></script>
+
+  <!-- 90-detection-loop.js: repeatedly runs detection, updates status, and keeps the live AI pipeline moving frame by frame. -->
   <script src="../js/pages/control/90-detection-loop.js"></script>
+
+  <!-- 100-follow-automation.js: optional auto-follow layer that turns tracking guidance into controller movement commands. -->
   <script src="../js/pages/control/100-follow-automation.js"></script>
 
 </body>

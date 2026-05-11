@@ -271,3 +271,9 @@ function init() {
     console.error('SkyShieldAuth module missing. Protected routes may be vulnerable.');
   }
 }
+
+/*
+WHO-CALLS:
+- html/control.html loads this file.
+- 90-detection-loop.js calls init() after all control scripts are loaded.
+*/

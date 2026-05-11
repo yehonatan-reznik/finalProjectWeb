@@ -202,3 +202,11 @@ function startDetectionLoop() {
 
 // The earlier control-page modules define init(), but we call it here after the split control-page stack has loaded.
 init();
+
+/*
+WHO-CALLS:
+- html/control.html loads this file near the end of the script list.
+- 40-init.js calls startDetectionLoop() and stopDetectionLoop().
+- 30-transport.js calls stopDetectionLoop('idle').
+- this file calls init() from 40-init.js and then repeatedly calls the AI and overlay helpers.
+*/

@@ -222,6 +222,8 @@ async function ensureCocoDetectModel() {
  * @returns {Promise<object|null>} Loaded ONNX Runtime inference session.
  */
 // EXAM: load and cache the AeroYOLO ONNX session.
+//makes sure the AeroYOLO ONNX session/model is loaded and ready
+
 async function ensureDroneDetectSession() {
   // Backend strategy:
   // - Prefer WebGPU because browser GPU inference is faster when available.
@@ -287,7 +289,7 @@ async function detectWithCoco() {
 // EXAM: run one AeroYOLO inference pass.
 async function detectWithAeroYolo() {
   // Function flow:
-  // 1. Ensure the ONNX session exists.
+  // 1. Ensure the ONNX session exists.  Open Neural Network Exchange.
   // 2. Read model input dimensions from session metadata.
   // 3. Preprocess the current frame into an ONNX tensor.
   // 4. Run the model.
@@ -328,3 +330,10 @@ async function detectWithAeroYolo() {
  * @returns {Promise<void>} Resolves after one detection pass finishes.
  */
 // EXAM: full detection pipeline for one frame.
+
+/*
+WHO-CALLS:
+- html/control.html loads this file.
+- 90-detection-loop.js calls detectWithAeroYolo() or detectWithCoco().
+- this file calls ensureDetectSourceSurface() from 70-draw-target-overlay.js.
+*/

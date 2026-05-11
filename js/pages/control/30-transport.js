@@ -314,3 +314,12 @@ function downloadTelemetry() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/*
+WHO-CALLS:
+- html/control.html loads this file.
+- 40-init.js calls setStream(), syncLaserState(), syncControllerConfig(), and sendCmd().
+- 10-firebase.js calls setStream(), syncLaserState(), and syncControllerConfig().
+- 70-draw-target-overlay.js calls sendCmd() for laser changes.
+- 100-follow-automation.js calls sendCmd() and syncControllerConfig().
+*/

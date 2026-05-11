@@ -371,3 +371,11 @@ function clearTargetTelemetry() {
   });
   updateOperatorAssistReadout();
 }
+
+/*
+WHO-CALLS:
+- html/control.html loads this file.
+- 40-init.js calls loadSettings(), saveSettings(), getSettings(), and clearTargetTelemetry().
+- 20-calibration-and-target-guide.js reads trackingState and calls getSettings().
+- 60-calculate-target-position.js, 70-draw-target-overlay.js, 80-run-ai-models.js, 90-detection-loop.js, and 100-follow-automation.js read the detector state/constants from this file.
+*/

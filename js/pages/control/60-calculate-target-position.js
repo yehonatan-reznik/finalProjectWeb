@@ -269,3 +269,10 @@ function drawReticle() {
  * @param {object|null} selected - Detection currently chosen as the tracked target.
  */
 // EXAM: draw boxes, labels, path line, and guidance overlay.
+
+/*
+WHO-CALLS:
+- html/control.html loads this file.
+- 70-draw-target-overlay.js calls smoothMetrics() and simCommand().
+- 90-detection-loop.js calls buildDetections(), chooseCandidate(), and buildTargetLogMessage().
+*/

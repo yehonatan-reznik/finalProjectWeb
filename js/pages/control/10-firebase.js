@@ -394,4 +394,9 @@ Newer Firebase structure like camera.state.urlBase and controller.state.urlBase.
 
 exam summary:
 This file handles Firebase sync for the control dashboard. applyFirebaseSnapshot reads Firebase data, updates dashboard fields, syncs laser state, and auto-fills camera/controller URLs only when no local override exists. startFirebaseSync starts one live RTDB root listener after authentication/database setup is available. Firebase is used for discovery and shared state, while direct ESP32 HTTP commands are handled in the transport file.
+
+WHO-CALLS:
+- html/control.html loads this file.
+- 40-init.js calls startFirebaseSync().
+- startFirebaseSync() then calls applyFirebaseSnapshot() whenever Firebase sends a new snapshot.
 */
